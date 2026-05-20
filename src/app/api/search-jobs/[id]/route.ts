@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // In Next.js App Router, params is a promise in newer versions, but depending on the version 
