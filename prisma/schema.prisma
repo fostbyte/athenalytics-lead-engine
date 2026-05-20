@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model SearchJob {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  vertical         String
+  locationType     String   // 'city_state' or 'zip'
+  city             String?
+  state            String?
+  zipCode          String?
+  radiusMiles      Int      @default(10)
+  targetCount      Int      @default(50)
+  filters          Json?
+  status           String   @default("queued") // 'queued', 'running', 'completed', 'failed'
+  
+  // Progress metadata
+  totalFound       Int      @default(0)
+  totalEnriched    Int      @default(0)
+  totalScored      Int      @default(0)
+  error            String?
+
+  leads            Lead[]
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Lead {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  searchJobId      String
+  businessName     String
+  website          String?
+  contactEmail     String?
+  category         String?
+  score            Float?
+  scoreBand        String?  // 'high', 'medium', 'review', 'exclude'
+  reasons          String[]
+  
+  // Geography Context
+  city             String?
+  state            String?
+  zipCode          String?
+  lat              Float?
+  lng              Float?
+  distanceMiles    Float?
+
+  status           String   @default("discovered") // 'discovered', 'scored', 'drafted', 'approved', 'sent', 'rejected'
+  
+  searchJob        SearchJob @relation(fields: [searchJobId], references: [id])
+  signals          LeadSignals?
+  emailDrafts      EmailDraft[]
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model LeadSignals {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  leadId           String   @unique
+  hasWebsite       Boolean?
+  hasBooking       Boolean?
+  hasOrdering      Boolean?
+  mobileFriendly   Boolean?
+  reviewCount      Int?
+  socialPresence   Boolean?
+  contactReadiness Boolean?
+  promotions       Boolean?
+  evidenceSnippets Json?    // Maps signal key to evidence text
+  
+  lead             Lead     @relation(fields: [leadId], references: [id])
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model EmailDraft {
+  id               String   @id @default(cuid())
+  workspaceId      String
+  leadId           String
+  subject          String
+  body             String
+  status           String   @default("pending") // 'pending', 'approved', 'sent', 'rejected'
+  approvedBy       String?
+  sentAt           DateTime?
+  
+  lead             Lead     @relation(fields: [leadId], references: [id])
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
