@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
         zipCode,
         radiusMiles,
         targetCount,
-        filters: filters ? JSON.stringify(filters) : null,
+        filters: filters ? filters : undefined,
         status: 'queued',
         totalFound: 0,
         totalEnriched: 0,
