@@ -33,7 +33,7 @@ export async function processDiscoveryJob(jobId: string) {
 
     // 3. Discover
     const candidates = await discoverLeads({
-      industry: job.industry,
+      industry: job.vertical,
       city: geo.city,
       state: geo.state,
       zipCode: geo.zipCode,
@@ -43,6 +43,7 @@ export async function processDiscoveryJob(jobId: string) {
 
     // 4. Save candidates to db
     const leadCreates = candidates.map(c => ({
+      workspaceId: job.workspaceId,
       searchJobId: job.id,
       businessName: c.businessName,
       website: c.website,

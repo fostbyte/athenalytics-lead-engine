@@ -23,7 +23,8 @@ describe('processDiscoveryJob', () => {
   it('processes a valid job to completion', async () => {
     const mockJob = {
       id: 'job-1',
-      industry: 'plumbing',
+      workspaceId: 'default-workspace',
+      vertical: 'plumbing',
       locationType: 'zip',
       zipCode: '78701',
       targetCount: 10,
@@ -62,7 +63,8 @@ describe('processDiscoveryJob', () => {
   it('handles geo validation errors gracefully', async () => {
     const mockJob = {
       id: 'job-2',
-      industry: 'plumbing',
+      workspaceId: 'default-workspace',
+      vertical: 'plumbing',
       locationType: 'zip',
       zipCode: 'invalid',
     };
