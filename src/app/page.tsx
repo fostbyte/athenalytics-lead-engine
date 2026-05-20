@@ -55,6 +55,19 @@ export default function Home() {
         body: JSON.stringify(payload)
       });
       if (res.ok) {
+        const data = await res.json();
+        
+        // Trigger the background worker for MVP 
+        // In prod this would be queue-driven from the backend
+        fetch('/api/discovery-worker', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobId: data.searchJob.id })
+        }).then(() => {
+          // Fetch again when worker finishes
+          fetchRecentSearches();
+        }).catch(console.error);
+
         fetchRecentSearches();
         // Reset form partially
         setCity('');
@@ -235,7 +248,7 @@ export default function Home() {
                     </div>
                     <div className="flex justify-between items-center text-sm border-t border-zinc-800/50 pt-3 mt-3">
                       <span className="text-zinc-500">Target: {job.targetCount}</span>
-                      <span className="text-zinc-400 font-medium">Found: {job.progressMetadata?.totalFound || 0}</span>
+                      <span className="text-zinc-400 font-medium">Found: {job.totalFound || 0}</span>
                     </div>
                   </div>
                 ))
