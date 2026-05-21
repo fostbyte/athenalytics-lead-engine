@@ -64,7 +64,16 @@ export default function Home() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ jobId: data.searchJob.id })
         }).then(() => {
-          // Fetch again when worker finishes
+          // Fetch again when discovery finishes
+          fetchRecentSearches();
+          // Trigger enrichment in the background
+          return fetch('/api/enrichment-worker', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ searchJobId: data.searchJob.id })
+          });
+        }).then(() => {
+          // Fetch again when enrichment finishes
           fetchRecentSearches();
         }).catch(console.error);
 
