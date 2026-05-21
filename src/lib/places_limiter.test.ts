@@ -29,7 +29,7 @@ describe('checkAndLogQuota', () => {
   });
 
   it('allows request and logs cost if monthly spend is within limit', async () => {
-    process.env.GOOGLE_PLACES_API_KEY = 'mock-google-places-key';
+    process.env.GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || 'mock-google-places-key';
     
     // Monthly spend is $50.00
     (prisma.apiUsageLog.aggregate as any).mockResolvedValue({
@@ -49,7 +49,7 @@ describe('checkAndLogQuota', () => {
   });
 
   it('allows geocoding call if spend is within limit', async () => {
-    process.env.GOOGLE_PLACES_API_KEY = 'mock-google-places-key';
+    process.env.GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || 'mock-google-places-key';
     
     // Monthly spend is $10.00
     (prisma.apiUsageLog.aggregate as any).mockResolvedValue({
@@ -69,7 +69,7 @@ describe('checkAndLogQuota', () => {
   });
 
   it('blocks request and throws budget limit exception if monthly spend exceeds 70% ($140.00)', async () => {
-    process.env.GOOGLE_PLACES_API_KEY = 'mock-google-places-key';
+    process.env.GOOGLE_PLACES_API_KEY = process.env.GOOGLE_PLACES_API_KEY || 'mock-google-places-key';
     
     // Monthly spend is $139.98
     (prisma.apiUsageLog.aggregate as any).mockResolvedValue({
