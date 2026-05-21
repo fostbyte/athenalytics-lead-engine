@@ -3,10 +3,11 @@ import prisma from '@/lib/prisma';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const leadId = params.id;
+    const { id } = await params;
+    const leadId = id;
     if (!leadId) {
       return NextResponse.json({ error: 'Lead ID is required' }, { status: 400 });
     }
