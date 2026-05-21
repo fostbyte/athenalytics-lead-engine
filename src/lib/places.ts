@@ -1,10 +1,4 @@
-/**
- * Google Places API (New v1) client.
- * Docs: https://developers.google.com/maps/documentation/places/web-service/overview
- *
- * Falls back to null/empty when GOOGLE_PLACES_API_KEY is a placeholder or absent,
- * allowing the discovery.ts mock generator to take over.
- */
+import prisma from './prisma';
 
 export interface PlaceResult {
   placeId: string;
@@ -38,9 +32,61 @@ const SEARCH_FIELD_MASK = [
 ].join(',');
 
 function getApiKey(): string | null {
-  const key = process.env.GOOGLE_PLACES_API_KEY;
+  const key = process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
   if (!key || key.startsWith('PLACEHOLDER')) return null;
   return key;
+}
+
+const COST_PLACES = 0.032; // Text Search (Advanced) is $32.00 per 1,000 requests
+const COST_GEOCODING = 0.005; // Geocoding is $5.00 per 1,000 requests
+
+export async function checkAndLogQuota(apiName: 'places' | 'geocoding'): Promise<void> {
+  const apiKey = getApiKey();
+  if (!apiKey) return;
+
+  const cost = apiName === 'places' ? COST_PLACES : COST_GEOCODING;
+
+  // Determine start of current month
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Sum cost for this month
+  let currentSpend = 0;
+  try {
+    const aggregate = await prisma.apiUsageLog.aggregate({
+      where: {
+        timestamp: {
+          gte: startOfMonth,
+        },
+      },
+      _sum: {
+        cost: true,
+      },
+    });
+    currentSpend = aggregate._sum.cost || 0;
+  } catch (err) {
+    console.error('[Quota Check] Failed to fetch current month spend, defaulting to 0:', err);
+  }
+
+  const threshold = 140.0; // 70% of $200 free tier limit
+
+  if (currentSpend + cost > threshold) {
+    throw new Error(
+      `Google Maps API monthly rate limit exceeded. Monthly safety limit of $140.00 (70% of free tier) reached. API call blocked to prevent billing charges.`
+    );
+  }
+
+  // Create log record
+  try {
+    await prisma.apiUsageLog.create({
+      data: {
+        apiName,
+        cost,
+      },
+    });
+  } catch (err) {
+    console.error('[Quota Check] Failed to log API usage:', err);
+  }
 }
 
 function mapPlaceType(types: string[]): string | null {
@@ -89,6 +135,9 @@ export async function searchPlaces(
   if (!apiKey) {
     return [];
   }
+
+  // Enforce quota limit check and log usage
+  await checkAndLogQuota('places');
 
   try {
     const body = {
@@ -159,6 +208,9 @@ export async function geocodeZip(
     return geocodeCache.get(zipCode)!;
   }
 
+  // Enforce quota limit check and log usage
+  await checkAndLogQuota('geocoding');
+
   try {
     const url = `${GEOCODING_API_BASE}?address=${encodeURIComponent(zipCode)}&components=country:US&key=${apiKey}`;
     const res = await fetch(url);
@@ -205,6 +257,9 @@ export async function geocodeCityState(
     return { lat: c.lat, lng: c.lng };
   }
 
+  // Enforce quota limit check and log usage
+  await checkAndLogQuota('geocoding');
+
   try {
     const address = encodeURIComponent(`${city}, ${state}, USA`);
     const url = `${GEOCODING_API_BASE}?address=${address}&key=${apiKey}`;
@@ -222,3 +277,4 @@ export async function geocodeCityState(
     return null;
   }
 }
+

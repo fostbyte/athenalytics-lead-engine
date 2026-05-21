@@ -157,3 +157,11 @@ model AuditLog {
   details     Json?    // Before/after state snapshots or metadata
   createdAt   DateTime @default(now())
 }
+
+model ApiUsageLog {
+  id        String   @id @default(cuid())
+  apiName   String   // 'places' | 'geocoding'
+  cost      Float    // Estimated cost in USD
+  timestamp DateTime @default(now())
+}
+

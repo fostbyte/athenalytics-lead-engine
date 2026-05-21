@@ -175,14 +175,175 @@ export default function AdminPage() {
           <div>
             <h2 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 24px', color: '#f1f5f9' }}>System Overview</h2>
             {stats ? (
-              <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 32 }}>
-                <StatCard label="Total Users" value={stats.totalUsers} icon="👤" />
-                <StatCard label="Workspaces" value={stats.totalWorkspaces} icon="🏢" />
-                <StatCard label="Search Jobs" value={stats.totalJobs} icon="🔍" />
-                <StatCard label="Leads Generated" value={stats.totalLeads} icon="🎯" />
-                <StatCard label="Email Drafts" value={stats.totalDrafts} icon="✉️" />
-                <StatCard label="Emails Sent" value={stats.totalSent} icon="📤" />
-              </div>
+              <>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 32 }}>
+                  <StatCard label="Total Users" value={stats.totalUsers} icon="👤" />
+                  <StatCard label="Workspaces" value={stats.totalWorkspaces} icon="🏢" />
+                  <StatCard label="Search Jobs" value={stats.totalJobs} icon="🔍" />
+                  <StatCard label="Leads Generated" value={stats.totalLeads} icon="🎯" />
+                  <StatCard label="Email Drafts" value={stats.totalDrafts} icon="✉️" />
+                  <StatCard label="Emails Sent" value={stats.totalSent} icon="📤" />
+                </div>
+
+                {/* Google Maps API Cost & Quota Tracker */}
+                {stats.googleMapsSpend && (
+                  <div style={{
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    border: '1px solid rgba(99, 102, 241, 0.3)',
+                    borderRadius: 16,
+                    padding: '24px 32px',
+                    marginBottom: 32,
+                    backdropFilter: 'blur(20px)',
+                    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 24 }}>🗺️</span>
+                        <div>
+                          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#f1f5f9' }}>
+                            Google Maps API Cost & Quota Monitor
+                          </h3>
+                          <p style={{ margin: 0, fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                            Automated rate limiting to guarantee 100% free-tier operation.
+                          </p>
+                        </div>
+                      </div>
+                      <span style={{
+                        background: stats.googleMapsSpend.blocked 
+                          ? 'rgba(239, 68, 68, 0.15)' 
+                          : stats.googleMapsSpend.monthlySpend >= 100 
+                            ? 'rgba(245, 158, 11, 0.15)' 
+                            : 'rgba(16, 185, 129, 0.15)',
+                        color: stats.googleMapsSpend.blocked 
+                          ? '#f87171' 
+                          : stats.googleMapsSpend.monthlySpend >= 100 
+                            ? '#fbbf24' 
+                            : '#34d399',
+                        border: `1px solid ${
+                          stats.googleMapsSpend.blocked 
+                            ? 'rgba(239, 68, 68, 0.3)' 
+                            : stats.googleMapsSpend.monthlySpend >= 100 
+                              ? 'rgba(245, 158, 11, 0.3)' 
+                              : 'rgba(16, 185, 129, 0.3)'
+                        }`,
+                        borderRadius: 20,
+                        padding: '4px 12px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em'
+                      }}>
+                        {stats.googleMapsSpend.blocked 
+                          ? 'LOCKED (70% Limit)' 
+                          : stats.googleMapsSpend.monthlySpend >= 100 
+                            ? 'Warning' 
+                            : 'Active & Safe'}
+                      </span>
+                    </div>
+
+                    {stats.googleMapsSpend.blocked && (
+                      <div style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: 8,
+                        padding: '12px 16px',
+                        marginBottom: 20,
+                        fontSize: 13,
+                        color: '#f87171',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 10
+                      }}>
+                        <span>🚨</span>
+                        <span>
+                          <strong>Safety Lock Triggered:</strong> Monthly API usage has hit the 70% free tier safety threshold (${stats.googleMapsSpend.safetyLimit.toFixed(2)}). All new Google Places search requests have been halted to prevent out-of-pocket charges.
+                        </span>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', alignItems: 'center' }}>
+                      {/* Progress Track */}
+                      <div style={{ flex: 2, minWidth: 280 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#94a3b8', marginBottom: 8 }}>
+                          <span>Monthly Accrued Spend</span>
+                          <strong>
+                            ${stats.googleMapsSpend.monthlySpend.toFixed(2)} / ${stats.googleMapsSpend.safetyLimit.toFixed(2)}
+                          </strong>
+                        </div>
+                        {/* Progress Bar Track */}
+                        <div style={{
+                          height: 12,
+                          width: '100%',
+                          background: '#0f172a',
+                          borderRadius: 6,
+                          overflow: 'hidden',
+                          border: '1px solid rgba(71, 85, 105, 0.3)',
+                          position: 'relative'
+                        }}>
+                          <div style={{
+                            height: '100%',
+                            width: `${stats.googleMapsSpend.percentageOfSafety}%`,
+                            background: stats.googleMapsSpend.blocked
+                              ? 'linear-gradient(90deg, #ef4444, #b91c1c)'
+                              : 'linear-gradient(90deg, #6366f1, #a855f7)',
+                            borderRadius: 6,
+                            transition: 'width 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+                          }} />
+                          {/* Safety Limit Indicator line */}
+                          <div style={{
+                            position: 'absolute',
+                            right: '30%', // Since $140 is 70% of $200
+                            top: 0,
+                            bottom: 0,
+                            width: 2,
+                            background: 'rgba(239, 68, 68, 0.5)',
+                            zIndex: 1
+                          }} title="70% Safety Limit Threshold ($140.00)" />
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#64748b', marginTop: 6 }}>
+                          <span>$0.00 (Start of Month)</span>
+                          <span style={{ color: '#f87171' }}>$140.00 (70% Safety Budget)</span>
+                          <span>$200.00 (Full Free Tier)</span>
+                        </div>
+                      </div>
+
+                      {/* Stat Metrics Grid */}
+                      <div style={{ display: 'flex', gap: 16, flex: 1, minWidth: 200 }}>
+                        <div style={{
+                          background: 'rgba(30, 41, 59, 0.5)',
+                          border: '1px solid rgba(71, 85, 105, 0.2)',
+                          borderRadius: 10,
+                          padding: '12px 16px',
+                          flex: 1,
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9' }}>
+                            {stats.googleMapsSpend.percentageOfSafety.toFixed(1)}%
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                            Of Safety Cap
+                          </div>
+                        </div>
+                        <div style={{
+                          background: 'rgba(30, 41, 59, 0.5)',
+                          border: '1px solid rgba(71, 85, 105, 0.2)',
+                          borderRadius: 10,
+                          padding: '12px 16px',
+                          flex: 1,
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: '#f1f5f9' }}>
+                            {stats.googleMapsSpend.percentageOfFreeTier.toFixed(1)}%
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                            Of $200 Free Tier
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div style={{ color: '#64748b' }}>Loading…</div>
             )}
