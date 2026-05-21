@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const workspaceId = req.headers.get('x-workspace-id');
@@ -11,7 +11,7 @@ export async function PUT(
       return NextResponse.json({ error: 'x-workspace-id header is required' }, { status: 400 });
     }
 
-    const { id } = params;
+    const { id } = await params;
     const body = await req.json();
     
     // Find schedule to ensure it belongs to the workspace
@@ -62,7 +62,7 @@ export async function PUT(
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const workspaceId = req.headers.get('x-workspace-id');
@@ -70,7 +70,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'x-workspace-id header is required' }, { status: 400 });
     }
 
-    const { id } = params;
+    const { id } = await params;
 
     // Find schedule to ensure it belongs to the workspace
     const schedule = await prisma.scheduledSearch.findFirst({
