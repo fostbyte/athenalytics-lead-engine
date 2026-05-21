@@ -281,9 +281,16 @@ async function llmScoringNode(state: typeof ScoringState.State) {
 
   try {
     // 3. Initialize OpenRouter Chat Client
+    // Set process.env.OPENAI_API_KEY as a backup for maximum LangChain compatibility
+    if (apiKey) {
+      process.env.OPENAI_API_KEY = apiKey;
+    }
+
     const chat = new ChatOpenAI({
-      modelName: 'google/gemma-2-9b-it:free',
+      modelName: 'openrouter/free',
+      model: 'openrouter/free',
       openAIApiKey: apiKey,
+      apiKey: apiKey,
       configuration: {
         baseURL: 'https://openrouter.ai/api/v1',
         defaultHeaders: {
