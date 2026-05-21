@@ -12,6 +12,15 @@ vi.mock('./prisma', () => ({
     emailDraft: {
       create: vi.fn(),
       update: vi.fn(),
+    },
+    settings: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    auditLog: {
+      create: vi.fn(),
+      findMany: vi.fn(),
     }
   }
 }));
@@ -63,7 +72,7 @@ describe('generateLocalFallbackDraft', () => {
 
     expect(draft.subject).toContain('Apex Roofing Co 😊');
     expect(draft.body).toContain("doesn't have an active website yet");
-    expect(draft.body).toContain('Best regards,\nAthenalytics Team');
+    expect(draft.body).toContain('Warmly,\nAthenalytics Team');
     expect(draft.personalizationPoints?.[0]).toContain("doesn't have an active website");
   });
 
@@ -91,6 +100,32 @@ describe('generateLocalFallbackDraft', () => {
 describe('draftEmail service orchestrator', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.settings.findUnique as any).mockResolvedValue({
+      workspaceId: 'workspace-test',
+      senderName: 'Athenalytics Team',
+      senderEmail: 'outreach@athenalytics.co',
+      scoringWeights: {
+        fit: 15,
+        website: 25,
+        demand: 15,
+        analytics: 15,
+        outreach: 15,
+        growth: 10,
+        geo: 5,
+      },
+      icpPresets: {
+        requiredWebsite: false,
+        minReviewCount: 0,
+        requireBooking: false,
+        requireOrdering: false,
+        requireSocial: false,
+      },
+      promptTemplates: {
+        direct: "Hi {{businessName}},\n\nI noticed your website lacks structured analytics or clear conversion pathways. We help businesses like yours fix this quickly.\n\nBest,\n{{senderName}}",
+        friendly: "Hey there {{businessName}} team,\n\nHope you're having a great week! I was browsing local spots in {{city}} and came across your website. I love what you do! I noticed a few minor tweaks to your website's analytics could help you capture a lot more customers. We'd love to help out.\n\nWarmly,\n{{senderName}}",
+        professional: "Dear {{businessName}} Management,\n\nI am writing to share a digital maturity audit of your online presence. Our team identified specific optimization opportunities regarding your analytics setup and contact readiness. We would be pleased to schedule a brief consultation to discuss these findings.\n\nSincerely,\n{{senderName}}",
+      }
+    });
   });
 
   it('runs OpenRouter pipeline if API key is present', async () => {
@@ -161,6 +196,14 @@ describe('draftEmail service orchestrator', () => {
 
     // Ensure key is strictly missing
     delete process.env.OPENROUTER_API_KEY;
+
+    // Reset settings mock for this test so there are no custom templates
+    (prisma.settings.findUnique as any).mockResolvedValue({
+      workspaceId: 'workspace-test',
+      senderName: 'Athenalytics Team',
+      senderEmail: 'outreach@athenalytics.co',
+      promptTemplates: {}
+    });
 
     const result = await draftEmail('lead-test-fallback', 'direct');
 

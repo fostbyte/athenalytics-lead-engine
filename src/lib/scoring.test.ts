@@ -11,6 +11,15 @@ vi.mock('./prisma', () => ({
     },
     searchJob: {
       update: vi.fn(),
+    },
+    settings: {
+      findUnique: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+    },
+    auditLog: {
+      create: vi.fn(),
+      findMany: vi.fn(),
     }
   }
 }));
@@ -66,13 +75,15 @@ describe('calculateHeuristicScore', () => {
     const result = calculateHeuristicScore(mockLead, mockSignals);
 
     // Math check:
-    // Website + mobile = 10
-    // Booking + ordering = 20
-    // Contact + social = 20
-    // Reviews = 25
-    // Distance = 10
-    // Total = 85
-    expect(result.score).toBe(85);
+    // Category = 6 (fit weight 15 * 0.4 since category not provided)
+    // Website + mobile = 25 (website weight 25)
+    // Booking + ordering = 15 (demand weight 15)
+    // Analytics pain = 6 (analytics weight 15 * 0.4 since standard CTAs are present)
+    // Contact readiness = 15 (outreach weight 15)
+    // Social + reviews = 10 (growth weight 10)
+    // Distance = 5 (geo weight 5)
+    // Total = 82
+    expect(result.score).toBe(82);
     expect(result.scoreBand).toBe('high');
     expect(result.reasons.length).toBeGreaterThanOrEqual(3);
     expect(result.reasons.length).toBeLessThanOrEqual(5);
@@ -95,15 +106,17 @@ describe('calculateHeuristicScore', () => {
     const result = calculateHeuristicScore(mockLead, mockSignals);
 
     // Math:
-    // No website (0)
-    // No booking/ordering (0)
-    // No contact/social (0)
-    // 0 reviews = 5 points
-    // Distance > 15 = 4 points
-    // Total = 9 points
-    expect(result.score).toBe(9);
-    expect(result.scoreBand).toBe('exclude');
-    expect(result.reasons[0]).toContain('No website detected');
+    // Category = 6 (fit weight 15 * 0.4 since category not provided)
+    // No website = 0
+    // No booking/ordering = 0
+    // Lacks web analytics = 15 (analytics weight 15)
+    // No contact = 0
+    // No social/reviews = 0
+    // Distance > 15 = 2 (geo weight 5 * 0.4)
+    // Total = 23
+    expect(result.score).toBe(23);
+    expect(result.scoreBand).toBe('review');
+    expect(result.reasons.some(r => r.includes('No website detected'))).toBe(true);
   });
 
   it('handles null signals gracefully with default review score', () => {
@@ -119,6 +132,32 @@ describe('calculateHeuristicScore', () => {
 describe('scoreLead LangGraph Pipeline', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    (prisma.settings.findUnique as any).mockResolvedValue({
+      workspaceId: 'workspace-test',
+      senderName: 'Athenalytics Team',
+      senderEmail: 'outreach@athenalytics.co',
+      scoringWeights: {
+        fit: 15,
+        website: 25,
+        demand: 15,
+        analytics: 15,
+        outreach: 15,
+        growth: 10,
+        geo: 5,
+      },
+      icpPresets: {
+        requiredWebsite: false,
+        minReviewCount: 0,
+        requireBooking: false,
+        requireOrdering: false,
+        requireSocial: false,
+      },
+      promptTemplates: {
+        direct: "Hi {{businessName}},\n\nI noticed your website lacks structured analytics or clear conversion pathways. We help businesses like yours fix this quickly.\n\nBest,\n{{senderName}}",
+        friendly: "Hey there {{businessName}} team,\n\nHope you're having a great week! I was browsing local spots in {{city}} and came across your website. I love what you do! I noticed a few minor tweaks to your website's analytics could help you capture a lot more customers. We'd love to help out.\n\nWarmly,\n{{senderName}}",
+        professional: "Dear {{businessName}} Management,\n\nI am writing to share a digital maturity audit of your online presence. Our team identified specific optimization opportunities regarding your analytics setup and contact readiness. We would be pleased to schedule a brief consultation to discuss these findings.\n\nSincerely,\n{{senderName}}",
+      }
+    });
   });
 
   it('successfully executes the LangGraph flow and saves results to DB', async () => {
@@ -224,21 +263,23 @@ describe('scoreLead LangGraph Pipeline', () => {
     expect(result.success).toBe(true);
     
     // Heuristic math:
-    // Website + mobile = 10
-    // Booking = 10
-    // Contact = 10
-    // 15 reviews = 15
-    // Distance = 10
-    // Total = 55 (medium match)
-    expect(result.score).toBe(55);
-    expect(result.scoreBand).toBe('medium');
+    // Category = 6 (fit weight 15 * 0.4 since category not provided)
+    // Website + mobile = 25 (website weight 25)
+    // Booking = 7.5 (demand weight 15 * 0.5)
+    // Analytics = 15 (analytics weight 15 because it lacks ordering)
+    // Contact = 15 (outreach weight 15)
+    // 15 reviews = 5 (growth weight 10 * 0.5)
+    // Distance = 5 (geo weight 5)
+    // Total = 78.5 -> rounded to 79 (high match)
+    expect(result.score).toBe(79);
+    expect(result.scoreBand).toBe('high');
     expect(result.reasons).toContain('Website is optimized for mobile responsiveness.');
 
     expect(prisma.lead.update).toHaveBeenCalledWith({
       where: { id: 'lead-test-fallback' },
       data: expect.objectContaining({
-        score: 55,
-        scoreBand: 'medium',
+        score: 79,
+        scoreBand: 'high',
       })
     });
   });

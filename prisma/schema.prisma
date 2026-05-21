@@ -43,6 +43,7 @@ model Lead {
   score            Float?
   scoreBand        String?  // 'high', 'medium', 'review', 'exclude'
   reasons          String[]
+  rejectionReason  String?
   
   // Geography Context
   city             String?
@@ -96,4 +97,28 @@ model EmailDraft {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+}
+
+model Settings {
+  id                 String   @id @default(cuid())
+  workspaceId        String   @unique
+  senderName         String   @default("Athenalytics Team")
+  senderEmail        String   @default("outreach@athenalytics.co")
+  scoringWeights     Json     // Dynamic weights: fit, website, demand, analytics, outreach, growth, geo
+  icpPresets         Json     // Target constraints: requiredWebsite, minReviewCount, etc.
+  defaultRadiusMiles Int      @default(10)
+  promptTemplates    Json     // Custom copy instructions for 'direct', 'friendly', and 'professional' tones
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  actor       String   @default("system-user")
+  action      String   // 'scoring', 'rescore', 'approval', 'send', 'settings_update', 'lead_reject'
+  entityType  String   // 'Lead', 'EmailDraft', 'Settings'
+  entityId    String
+  details     Json?    // Before/after state snapshots or metadata
+  createdAt   DateTime @default(now())
 }

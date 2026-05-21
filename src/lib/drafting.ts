@@ -1,5 +1,6 @@
 import prisma from './prisma';
 import { ChatOpenAI } from '@langchain/openai';
+import { getWorkspaceSettings } from './tenant';
 
 export interface EmailDraftResult {
   subject: string;
@@ -8,10 +9,58 @@ export interface EmailDraftResult {
 }
 
 /**
- * Local deterministic email draft generator based on business signals.
- * Serves as a high-quality fallback and a baseline helper.
+ * Simple interpolation utility for double-brace templates.
  */
-export function generateLocalFallbackDraft(lead: any, signals: any, tone: 'direct' | 'friendly' | 'professional'): EmailDraftResult {
+function interpolateTemplate(template: string, data: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(data)) {
+    result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'g'), value || '');
+  }
+  return result;
+}
+
+/**
+ * Local deterministic email draft generator based on business signals.
+ * Serves as a high-quality fallback and a baseline helper, now aware of workspace settings.
+ */
+export function generateLocalFallbackDraft(
+  lead: any, 
+  signals: any, 
+  tone: 'direct' | 'friendly' | 'professional',
+  settings?: any
+): EmailDraftResult {
+  const senderName = settings?.senderName || "Athenalytics Team";
+  const customTemplates = settings?.promptTemplates;
+  
+  // If custom templates are provided in the settings, interpolate and return
+  if (customTemplates && customTemplates[tone]) {
+    const template = customTemplates[tone];
+    const data = {
+      businessName: lead.businessName || "there",
+      city: lead.city || "your area",
+      state: lead.state || "",
+      senderName: senderName,
+      category: lead.category || "business",
+    };
+    const interpolatedBody = interpolateTemplate(template, data);
+    
+    let subject = "";
+    if (tone === 'friendly') {
+      subject = `Quick question about ${lead.businessName} 😊`;
+    } else if (tone === 'direct') {
+      subject = `Outreach: Digital upgrades for ${lead.businessName}`;
+    } else {
+      subject = `Strategic growth and optimization - ${lead.businessName}`;
+    }
+    
+    return {
+      subject,
+      body: interpolatedBody,
+      personalizationPoints: ["Workspace template applied", `Sender: ${senderName}`]
+    };
+  }
+
+  // Core fallback generation logic if no settings/custom templates are set
   let observedFact = "";
   let painPoint = "";
   let valueProp = "";
@@ -20,23 +69,23 @@ export function generateLocalFallbackDraft(lead: any, signals: any, tone: 'direc
   if (!signals || !signals.hasWebsite) {
     observedFact = "I was looking for local service providers in the area and noticed your business doesn't have an active website yet.";
     painPoint = "In today's market, over 80% of local customers search online first, meaning you might be losing valuable bookings to competitors.";
-    valueProp = "At Athenalytics, we build fast, high-converting launchpad websites for local businesses that start generating phone calls within weeks.";
+    valueProp = `At Athenalytics, we build fast, high-converting launchpad websites for local businesses that start generating phone calls within weeks.`;
   } else if (!signals.hasBooking && signals.hasWebsite) {
     observedFact = "I took a look at your website and noticed that customers aren't able to book appointments or request quotes directly online.";
     painPoint = "Most consumers now expect instant booking options, and without them, potential clients often bounce to other local sites.";
-    valueProp = "Our conversion booking widgets integrate seamlessly into your current website and typically recover up to 35% of previously lost customer traffic.";
+    valueProp = `Our conversion booking widgets integrate seamlessly into your current website and typically recover up to 35% of previously lost customer traffic.`;
   } else if (!signals.mobileFriendly && signals.hasWebsite) {
     observedFact = "I noticed your website isn't fully optimized for mobile devices, which makes it hard to read and navigate on a smartphone.";
     painPoint = "Since over 60% of search traffic is on mobile, this friction can cause prospective clients to leave your site in frustration.";
-    valueProp = "We build lightning-fast mobile responsive overlays that ensure a seamless, professional experience on any device.";
+    valueProp = `We build lightning-fast mobile responsive overlays that ensure a seamless, professional experience on any device.`;
   } else if ((signals.reviewCount ?? 0) === 0) {
     observedFact = "I noticed you don't have a public review footprint online yet.";
     painPoint = "Trust is everything for local businesses, and modern search engines strongly favor businesses with active reviews.";
-    valueProp = "We build automated reputational systems that collect authentic customer reviews and showcase them directly to search engines.";
+    valueProp = `We build automated reputational systems that collect authentic customer reviews and showcase them directly to search engines.`;
   } else {
     observedFact = `I've been following local businesses in ${lead.city || 'your area'} and wanted to reach out regarding ${lead.businessName}.`;
     painPoint = "With local search competition rising, small digital friction points can quietly divert potential customers elsewhere.";
-    valueProp = "Athenalytics helps businesses optimize their digital conversions by resolving website conversion, speed, and booking limitations.";
+    valueProp = `Athenalytics helps businesses optimize their digital conversions by resolving website conversion, speed, and booking limitations.`;
   }
 
   // CTA selection based on tone
@@ -53,13 +102,13 @@ export function generateLocalFallbackDraft(lead: any, signals: any, tone: 'direc
 
   if (tone === 'friendly') {
     subject = `Quick question about ${lead.businessName} 😊`;
-    body = `Hi team,\n\nHope your week is going great! ${observedFact} ${painPoint} ${valueProp} ${cta}\n\nBest regards,\nAthenalytics Team`;
+    body = `Hi team,\n\nHope your week is going great! ${observedFact} ${painPoint} ${valueProp} ${cta}\n\nWarmly,\n${senderName}`;
   } else if (tone === 'direct') {
     subject = `Outreach: Digital upgrades for ${lead.businessName}`;
-    body = `Hello,\n\n${observedFact} ${painPoint} ${valueProp} ${cta}\n\nThanks,\nAthenalytics Team`;
+    body = `Hello,\n\n${observedFact} ${painPoint} ${valueProp} ${cta}\n\nThanks,\n${senderName}`;
   } else { // professional
     subject = `Strategic growth and optimization - ${lead.businessName}`;
-    body = `Dear Sir or Madam,\n\nI hope this message finds you well. ${observedFact} ${painPoint} ${valueProp} ${cta}\n\nSincerely,\nAthenalytics Team`;
+    body = `Dear Sir or Madam,\n\nI hope this message finds you well. ${observedFact} ${painPoint} ${valueProp} ${cta}\n\nSincerely,\n${senderName}`;
   }
 
   return {
@@ -70,7 +119,7 @@ export function generateLocalFallbackDraft(lead: any, signals: any, tone: 'direc
 }
 
 /**
- * Service to draft a personalized outreach email using OpenRouter or local fallback.
+ * Service to draft a personalized outreach email using OpenRouter or settings-aware local fallback.
  */
 export async function draftEmail(leadId: string, tone: 'direct' | 'friendly' | 'professional'): Promise<EmailDraftResult & { dbDraft?: any }> {
   // 1. Fetch Lead and signals
@@ -85,15 +134,17 @@ export async function draftEmail(leadId: string, tone: 'direct' | 'friendly' | '
 
   const signals = lead.signals;
 
-  // 2. Generate baseline/fallback
-  const fallback = generateLocalFallbackDraft(lead, signals, tone);
+  // 2. Fetch workspace settings
+  const settings = await getWorkspaceSettings(lead.workspaceId);
 
-  // 3. Verify OpenRouter API Key
+  // 3. Generate baseline/fallback (using dynamic workspace settings)
+  const fallback = generateLocalFallbackDraft(lead, signals, tone, settings);
+
+  // 4. Verify OpenRouter API Key
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     console.log(`[Drafting Engine] No OPENROUTER_API_KEY found. Falling back to local template generator.`);
     
-    // Save draft as 'pending' in the DB
     const dbDraft = await prisma.emailDraft.create({
       data: {
         workspaceId: lead.workspaceId,
@@ -104,7 +155,6 @@ export async function draftEmail(leadId: string, tone: 'direct' | 'friendly' | '
       }
     });
 
-    // Update lead status to drafted
     await prisma.lead.update({
       where: { id: leadId },
       data: { status: 'drafted' }
@@ -117,7 +167,7 @@ export async function draftEmail(leadId: string, tone: 'direct' | 'friendly' | '
   }
 
   try {
-    // 4. Initialize OpenRouter Chat Client
+    // 5. Initialize OpenRouter Chat Client
     const chat = new ChatOpenAI({
       modelName: 'google/gemma-2-9b-it:free',
       openAIApiKey: apiKey,
@@ -131,6 +181,9 @@ export async function draftEmail(leadId: string, tone: 'direct' | 'friendly' | '
       temperature: 0.7,
       maxTokens: 1000
     });
+
+    const activeTemplate = (settings?.promptTemplates as any)?.[tone] || "";
+    const senderName = settings?.senderName || "Athenalytics Team";
 
     const systemPrompt = `You are the Athenalytics Email Outreach Drafting Engine, an elite B2B sales copywriter.
 Your goal is to write a highly personalized, concise outreach email to a local business based on their digital maturity signals.
@@ -147,9 +200,12 @@ The JSON object must contain EXACTLY these keys:
 
 Strict copy guidelines:
 - Tone: The user selected tone is "${tone}" (friendly, direct, or professional). Adjust the greeting, sign-off, and vocabulary accordingly.
+- Workspace prompt template reference:
+  "${activeTemplate}"
+- You should base the core messaging and style on the active workspace template above.
 - Factual Grounding: You MUST ONLY refer to verified facts present in the lead data and signals. You are strictly forbidden from fabricating facts (e.g. do not say "I visited your website and saw it was slow" unless you have specific, verified evidence).
 - If there is sparse data or no website, produce a conservative, exploratory draft asking if they are currently accepting new clients or looking to establish their initial web presence.
-- Keep the copy extremely clean, short, professional, and free of generic sales fluff. Do not use placeholders like [Your Name] or [Insert Date]. Sign off as "Athenalytics Team".`;
+- Keep the copy extremely clean, short, professional, and free of generic sales fluff. Do not use placeholders like [Your Name] or [Insert Date]. Sign off as "${senderName}".`;
 
     const userPrompt = `
 Business Name: ${lead.businessName}
@@ -184,7 +240,6 @@ Generate the personalized JSON email draft now.`;
     const content = response.text || response.content;
     let jsonContent = typeof content === 'string' ? content : JSON.stringify(content);
     
-    // Clean up potential markdown JSON brackets if the LLM outputted them
     jsonContent = jsonContent.trim();
     if (jsonContent.startsWith('```')) {
       jsonContent = jsonContent.replace(/^```json\s*/, '').replace(/```$/, '').trim();
@@ -192,12 +247,10 @@ Generate the personalized JSON email draft now.`;
 
     const result = JSON.parse(jsonContent);
 
-    // Validate structure
     const subject = typeof result.subject === 'string' ? result.subject : fallback.subject;
     const body = typeof result.body === 'string' ? result.body : fallback.body;
     const personalizationPoints = Array.isArray(result.personalizationPoints) ? result.personalizationPoints : fallback.personalizationPoints;
 
-    // Save draft in the database
     const dbDraft = await prisma.emailDraft.create({
       data: {
         workspaceId: lead.workspaceId,
@@ -208,7 +261,6 @@ Generate the personalized JSON email draft now.`;
       }
     });
 
-    // Update lead status to drafted
     await prisma.lead.update({
       where: { id: leadId },
       data: { status: 'drafted' }
@@ -224,7 +276,6 @@ Generate the personalized JSON email draft now.`;
   } catch (err: any) {
     console.error(`[Drafting Engine] OpenRouter draft generation failed: ${err.message}. Falling back to local template.`);
     
-    // Save draft in database
     const dbDraft = await prisma.emailDraft.create({
       data: {
         workspaceId: lead.workspaceId,
@@ -235,7 +286,6 @@ Generate the personalized JSON email draft now.`;
       }
     });
 
-    // Update lead status to drafted
     await prisma.lead.update({
       where: { id: leadId },
       data: { status: 'drafted' }

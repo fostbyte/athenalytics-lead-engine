@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getWorkspaceIdFromRequest } from '@/lib/tenant';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     // Build Prisma query condition
     const where: any = {
-      workspaceId: 'default-workspace', // Hardcoded for MVP Phase 1-4
+      workspaceId: getWorkspaceIdFromRequest(request),
     };
 
     if (search) {

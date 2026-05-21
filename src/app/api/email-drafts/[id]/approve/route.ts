@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getWorkspaceIdFromRequest, verifyWorkspaceAccess } from '@/lib/tenant';
+import { logAuditEvent } from '@/lib/audit';
 
 export async function POST(
   request: Request,
@@ -7,6 +9,7 @@ export async function POST(
 ) {
   try {
     const { id } = await context.params;
+    const requestWorkspaceId = getWorkspaceIdFromRequest(request);
 
     if (!id) {
       return NextResponse.json({ error: 'Draft ID is required' }, { status: 400 });
@@ -21,6 +24,9 @@ export async function POST(
     if (!draft) {
       return NextResponse.json({ error: 'Email draft not found' }, { status: 404 });
     }
+
+    // Tenant boundary verification
+    verifyWorkspaceAccess(draft.workspaceId, requestWorkspaceId);
 
     // 2. Perform transaction: update draft to 'approved' and lead to 'approved'
     const updatedDraft = await prisma.emailDraft.update({
@@ -37,6 +43,18 @@ export async function POST(
         status: 'approved'
       }
     });
+
+    // Log compliance audit event
+    await logAuditEvent(
+      draft.workspaceId,
+      'approval',
+      'EmailDraft',
+      id,
+      {
+        businessName: draft.lead.businessName,
+        approvedBy: 'default-user',
+      }
+    );
 
     return NextResponse.json({
       success: true,

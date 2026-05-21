@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { getWorkspaceIdFromRequest, verifyWorkspaceAccess } from '@/lib/tenant';
 
 export async function PUT(
   request: Request,
@@ -7,8 +8,21 @@ export async function PUT(
 ) {
   try {
     const { id } = await context.params;
-    const body = await request.json();
+    const requestWorkspaceId = getWorkspaceIdFromRequest(request);
 
+    // Load draft first to verify workspace ownership
+    const existingDraft = await prisma.emailDraft.findUnique({
+      where: { id },
+    });
+
+    if (!existingDraft) {
+      return NextResponse.json({ error: 'Draft not found' }, { status: 404 });
+    }
+
+    // Verify tenant boundary
+    verifyWorkspaceAccess(existingDraft.workspaceId, requestWorkspaceId);
+
+    const body = await request.json();
     const { subject, body: emailBody, status } = body;
 
     const updateData: any = {};
@@ -38,6 +52,18 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
+    const requestWorkspaceId = getWorkspaceIdFromRequest(request);
+
+    const existingDraft = await prisma.emailDraft.findUnique({
+      where: { id },
+    });
+
+    if (!existingDraft) {
+      return NextResponse.json({ error: 'Draft not found' }, { status: 404 });
+    }
+
+    // Verify tenant boundary
+    verifyWorkspaceAccess(existingDraft.workspaceId, requestWorkspaceId);
 
     const draft = await prisma.emailDraft.delete({
       where: { id }
