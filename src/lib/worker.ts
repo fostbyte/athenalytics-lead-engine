@@ -1,6 +1,6 @@
 import prisma from './prisma';
 import { discoverLeads } from './discovery';
-import { normalizeGeography } from './geo';
+import { normalizeGeography, calculateDistanceMiles } from './geo';
 
 export async function processDiscoveryJob(jobId: string) {
   // 1. Fetch job
@@ -42,15 +42,27 @@ export async function processDiscoveryJob(jobId: string) {
     });
 
     // 4. Save candidates to db
-    const leadCreates = candidates.map(c => ({
-      workspaceId: job.workspaceId,
-      searchJobId: job.id,
-      businessName: c.businessName,
-      website: c.website,
-      phoneNumber: c.phoneNumber,
-      address: c.address,
-      status: 'new',
-    }));
+    const leadCreates = candidates.map(c => {
+      let distanceMiles: number | null = null;
+      if (geo.lat && geo.lng && c.lat && c.lng) {
+        distanceMiles = calculateDistanceMiles(geo.lat, geo.lng, c.lat, c.lng);
+      }
+      return {
+        workspaceId: job.workspaceId,
+        searchJobId: job.id,
+        businessName: c.businessName,
+        website: c.website,
+        phoneNumber: c.phoneNumber,
+        address: c.address,
+        city: c.city || geo.city || null,
+        state: c.state || geo.state || null,
+        zipCode: c.zipCode || geo.zipCode || null,
+        lat: c.lat || geo.lat || null,
+        lng: c.lng || geo.lng || null,
+        distanceMiles: distanceMiles,
+        status: 'discovered',
+      };
+    });
 
     await prisma.lead.createMany({
       data: leadCreates,

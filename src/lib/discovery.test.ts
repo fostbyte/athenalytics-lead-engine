@@ -35,13 +35,14 @@ describe('discoverLeads', () => {
     expect(leads.length).toBe(3);
   });
 
-  it('returns empty if no match', async () => {
+  it('generates mock leads dynamically if no static match is found', async () => {
     const leads = await discoverLeads({
       industry: 'plumbing',
       zipCode: '99999',
       targetCount: 10
     });
     
-    expect(leads.length).toBe(0);
+    expect(leads.length).toBeGreaterThan(0);
+    expect(leads[0].businessName).toContain('Plumbing');
   });
 });

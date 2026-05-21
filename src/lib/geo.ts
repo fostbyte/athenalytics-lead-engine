@@ -13,6 +13,7 @@ const MOCK_ZIP_DATA: Record<string, { lat: number; lng: number; city: string; st
   '78701': { lat: 30.2711, lng: -97.7437, city: 'Austin', state: 'TX' },
   '10001': { lat: 40.7501, lng: -73.9996, city: 'New York', state: 'NY' },
   '90210': { lat: 34.0901, lng: -118.4065, city: 'Beverly Hills', state: 'CA' },
+  '33598': { lat: 27.8184, lng: -82.3255, city: 'Riverview', state: 'FL' },
 };
 
 export function normalizeGeography(params: {
