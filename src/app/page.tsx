@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { logoutAction } from '@/app/actions/auth';
+import LeadsMap from '@/components/LeadsMap';
 import { 
   Search, 
   MapPin, 
@@ -72,7 +73,7 @@ export default function Home() {
   const [rescoringLeads, setRescoringLeads] = useState<Record<string, boolean>>({});
 
   // Phase 5 States for Tabbed Email Outreach Hub
-  const [activeTab, setActiveTab] = useState<'leads' | 'drafts' | 'outbox' | 'settings'>('leads');
+  const [activeTab, setActiveTab] = useState<'map' | 'leads' | 'drafts' | 'outbox' | 'settings'>('leads');
   const [drafts, setDrafts] = useState<any[]>([]);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [selectedDraft, setSelectedDraft] = useState<any | null>(null);
@@ -100,6 +101,7 @@ export default function Home() {
 
   // Phase 6 multi-tenant and settings states
   const [workspaceId, setWorkspaceId] = useState('default-workspace');
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [settings, setSettings] = useState<any>({
     senderName: 'Athenalytics Team',
     senderEmail: 'outreach@athenalytics.co',
@@ -143,6 +145,23 @@ export default function Home() {
 
   // Enrichment retrying tracking states
   const [enrichRetryingLeads, setEnrichRetryingLeads] = useState<Record<string, boolean>>({});
+
+  // Load user profile on mount
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) {
+          const profile = await res.json();
+          setUserProfile(profile);
+          setWorkspaceId(profile.workspaceId);
+        }
+      } catch (err) {
+        console.error('Failed to fetch user profile:', err);
+      }
+    };
+    fetchUserProfile();
+  }, []);
 
   useEffect(() => {
     fetchRecentSearches();
@@ -713,21 +732,22 @@ export default function Home() {
           <p className="text-zinc-400 text-lg max-w-2xl mx-auto font-light">
             Discover, enrich, and score high-intent leads across geographies using intelligent evidence-backed signals.
           </p>
-          <div className="flex justify-center items-center gap-2 mt-4 bg-zinc-900/50 border border-zinc-800/80 rounded-xl px-4 py-2 w-fit mx-auto backdrop-blur-sm shadow-lg">
-            <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider">Active Tenant ID:</span>
-            <select
-              id="workspace-switcher"
-              value={workspaceId}
-              onChange={(e) => {
-                setWorkspaceId(e.target.value);
-              }}
-              className="bg-zinc-950 border border-zinc-800 rounded-lg py-1 px-3 text-xs font-bold text-zinc-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-            >
-              <option value="default-workspace">🏢 Default Workspace</option>
-              <option value="enterprise-workspace">🚀 Enterprise Workspace</option>
-              <option value="workspace-beta">🧪 Workspace Beta</option>
-            </select>
-          </div>
+          {workspaceId && (
+            <div className="flex justify-center items-center gap-2 mt-4 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl px-5 py-2.5 w-fit mx-auto backdrop-blur-md shadow-2xl">
+              <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Secure Session Tenant:
+              </span>
+              <span className="text-xs font-extrabold text-indigo-400 bg-indigo-950/30 px-2 py-0.5 rounded-lg border border-indigo-900/40">
+                🏢 {workspaceId}
+              </span>
+              {userProfile && (
+                <span className="text-[11px] text-zinc-400 font-light border-l border-zinc-800 pl-2">
+                  👤 {userProfile.name} ({userProfile.email})
+                </span>
+              )}
+            </div>
+          )}
         </header>
 
         <div className="grid md:grid-cols-5 gap-8">
@@ -921,6 +941,16 @@ export default function Home() {
               {/* Tab Selector Buttons */}
               <div className="flex gap-1.5 p-1 bg-zinc-950/80 border border-zinc-850 rounded-xl w-fit shrink-0 backdrop-blur-md">
                 <button
+                  onClick={() => setActiveTab('map')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all duration-200 ${
+                    activeTab === 'map'
+                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  🗺️ Map View
+                </button>
+                <button
                   onClick={() => setActiveTab('leads')}
                   className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all duration-200 ${
                     activeTab === 'leads'
@@ -967,6 +997,41 @@ export default function Home() {
                 </button>
               </div>
             </div>
+
+            {/* TAB 0: LEADS MAP */}
+            {activeTab === 'map' && (
+              <LeadsMap 
+                leads={leads} 
+                onDraftEmail={async (lead, tone) => {
+                  setActiveTab('drafts');
+                  setLeadDraftingLoading(prev => ({ ...prev, [lead.id]: true }));
+                  try {
+                    const res = await fetch(`/api/email-drafts`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'x-workspace-id': workspaceId
+                      },
+                      body: JSON.stringify({ leadId: lead.id, tone })
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.success) {
+                        fetchDrafts();
+                        setSelectedDraft(data.draft);
+                        setEditSubject(data.draft.subject);
+                        setEditBody(data.draft.body);
+                      }
+                    }
+                  } catch (err) {
+                    console.error('Failed to generate draft from map:', err);
+                  } finally {
+                    setLeadDraftingLoading(prev => ({ ...prev, [lead.id]: false }));
+                  }
+                }} 
+                draftingLoading={leadDraftingLoading}
+              />
+            )}
 
             {/* TAB 1: LEADS QUEUE */}
             {activeTab === 'leads' && (

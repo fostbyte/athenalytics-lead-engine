@@ -53,14 +53,31 @@ export async function proxy(request: NextRequest) {
   }
 
   // Inject workspace context into request headers for downstream API routes
-  const response = NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
   if (session) {
-    response.headers.set('x-user-id', session.userId);
-    response.headers.set('x-user-role', session.role);
-    response.headers.set('x-workspace-id', session.workspaceId);
+    requestHeaders.set('x-user-id', session.userId);
+    requestHeaders.set('x-user-role', session.role);
+    
+    // For standard users, lock the workspace strictly to their session's workspaceId
+    // For admin users, allow them to override it if they specify a custom header or query param
+    if (session.role === 'admin') {
+      const customWorkspaceId = request.headers.get('x-workspace-id') || 
+                                request.nextUrl.searchParams.get('workspaceId');
+      if (customWorkspaceId) {
+        requestHeaders.set('x-workspace-id', customWorkspaceId);
+      } else {
+        requestHeaders.set('x-workspace-id', session.workspaceId);
+      }
+    } else {
+      requestHeaders.set('x-workspace-id', session.workspaceId);
+    }
   }
 
-  return response;
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
 }
 
 export const config = {
