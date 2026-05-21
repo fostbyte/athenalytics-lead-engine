@@ -19,8 +19,8 @@ export async function processDiscoveryJob(jobId: string) {
   });
 
   try {
-    // 2. Geo normalization (already stored somewhat normalized, but let's re-verify)
-    const geo = normalizeGeography({
+    // 2. Geo normalization (now async — may call Geocoding API)
+    const geo = await normalizeGeography({
       locationType: job.locationType as any,
       city: job.city || undefined,
       state: job.state || undefined,
@@ -31,53 +31,68 @@ export async function processDiscoveryJob(jobId: string) {
       throw new Error(`Invalid geography: ${geo.errors.join(', ')}`);
     }
 
-    // 3. Discover
+    // 3. Discover — passes real lat/lng so Places API can search geospatially
     const candidates = await discoverLeads({
       industry: job.vertical,
       city: geo.city,
       state: geo.state,
       zipCode: geo.zipCode,
+      lat: geo.lat,
+      lng: geo.lng,
       targetCount: job.targetCount || 50,
       radiusMiles: job.radiusMiles || 10,
     });
 
-    // 4. Save candidates to db
-    const leadCreates = candidates.map(c => {
+    // 4. Save candidates to db, skipping already-discovered places
+    const leadCreates = [];
+    for (const c of candidates) {
+      // Deduplication: skip if this placeId was already discovered for this workspace
+      if (c.placeId) {
+        const existing = await prisma.lead.findFirst({
+          where: { placeId: c.placeId, workspaceId: job.workspaceId },
+          select: { id: true },
+        });
+        if (existing) continue;
+      }
+
       let distanceMiles: number | null = null;
       if (geo.lat && geo.lng && c.lat && c.lng) {
         distanceMiles = calculateDistanceMiles(geo.lat, geo.lng, c.lat, c.lng);
       }
-      return {
+
+      leadCreates.push({
         workspaceId: job.workspaceId,
         searchJobId: job.id,
         businessName: c.businessName,
         website: c.website,
-        phoneNumber: c.phoneNumber,
-        address: c.address,
+        phoneNumber: c.phoneNumber ?? null,
+        address: c.address ?? null,
+        placeId: c.placeId ?? null,
+        category: c.category ?? null,
         city: c.city || geo.city || null,
         state: c.state || geo.state || null,
         zipCode: c.zipCode || geo.zipCode || null,
-        lat: c.lat || geo.lat || null,
-        lng: c.lng || geo.lng || null,
-        distanceMiles: distanceMiles,
+        lat: c.lat ?? geo.lat ?? null,
+        lng: c.lng ?? geo.lng ?? null,
+        distanceMiles,
         status: 'discovered',
-      };
-    });
+      });
+    }
 
-    await prisma.lead.createMany({
-      data: leadCreates,
-    });
+    if (leadCreates.length > 0) {
+      await prisma.lead.createMany({ data: leadCreates });
+    }
 
     // 5. Mark Complete
     await prisma.searchJob.update({
       where: { id: job.id },
-      data: { 
+      data: {
         status: 'completed',
-        totalFound: candidates.length,
+        totalFound: leadCreates.length,
       }
     });
 
-    return { success: true, count: candidates.length };
+    return { success: true, count: leadCreates.length };
   } catch (error: any) {
     // Mark failed
     await prisma.searchJob.update({

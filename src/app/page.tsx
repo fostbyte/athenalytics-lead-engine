@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { logoutAction } from '@/app/actions/auth';
 import { 
   Search, 
   MapPin, 
@@ -696,7 +697,15 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-8 md:p-24 bg-gradient-to-b from-[#09090b] to-[#121214] text-zinc-100">
-      <div className="max-w-6xl mx-auto space-y-12">
+      {/* ── User Navigation Bar ── */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 24px', background: 'rgba(9,9,11,0.85)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(63,63,70,0.5)' }}>
+        <Link href="/admin" style={{ fontSize: 12, color: '#818cf8', textDecoration: 'none', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>🛡️ Admin</Link>
+        <form action={logoutAction} style={{ display: 'inline' }}>
+          <button type="submit" style={{ fontSize: 12, color: '#94a3b8', background: 'rgba(71,85,105,0.2)', border: '1px solid rgba(71,85,105,0.3)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontWeight: 600 }}>Sign Out</button>
+        </form>
+      </div>
+
+      <div className="max-w-6xl mx-auto space-y-12" style={{ paddingTop: 48 }}>
         <header className="text-center space-y-4">
           <h1 className="text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400">
             Athenalytics Lead Engine

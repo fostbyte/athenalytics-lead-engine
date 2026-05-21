@@ -7,6 +7,31 @@ datasource db {
   provider = "postgresql"
 }
 
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  passwordHash   String
+  role           String   @default("user")  // 'user' | 'admin'
+  workspaceId    String   @default("default-workspace")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  passwordResets PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  token     String    @unique @default(cuid())
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model SearchJob {
   id               String   @id @default(cuid())
   workspaceId      String
@@ -38,8 +63,11 @@ model Lead {
   searchJobId      String
   businessName     String
   website          String?
+  phoneNumber      String?
+  address          String?
   contactEmail     String?
   category         String?
+  placeId          String?  // Google Places ID for deduplication
   score            Float?
   scoreBand        String?  // 'high', 'medium', 'review', 'exclude'
   reasons          String[]
@@ -72,6 +100,7 @@ model LeadSignals {
   hasOrdering      Boolean?
   mobileFriendly   Boolean?
   reviewCount      Int?
+  rating           Float?
   socialPresence   Boolean?
   contactReadiness Boolean?
   promotions       Boolean?
@@ -108,6 +137,12 @@ model Settings {
   icpPresets         Json     // Target constraints: requiredWebsite, minReviewCount, etc.
   defaultRadiusMiles Int      @default(10)
   promptTemplates    Json     // Custom copy instructions for 'direct', 'friendly', and 'professional' tones
+  // SMTP / Email connector (Sprint 10)
+  smtpHost           String?
+  smtpPort           Int?
+  smtpUser           String?
+  smtpPassEncr       String?  // AES-256 encrypted app password (stored encrypted)
+  smtpEnabled        Boolean  @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
