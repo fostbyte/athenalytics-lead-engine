@@ -20,6 +20,9 @@ vi.mock('./prisma', () => ({
     auditLog: {
       create: vi.fn(),
       findMany: vi.fn(),
+    },
+    apiUsageLog: {
+      create: vi.fn(),
     }
   }
 }));

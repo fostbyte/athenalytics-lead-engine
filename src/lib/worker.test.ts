@@ -11,8 +11,18 @@ vi.mock('./prisma', () => ({
     },
     lead: {
       createMany: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    settings: {
+      findUnique: vi.fn(),
+      update: vi.fn(),
     }
   }
+}));
+
+vi.mock('./limits', () => ({
+  canPerformAction: vi.fn().mockResolvedValue({ allowed: true, remaining: 50, limit: 50, current: 0 }),
+  incrementUsage: vi.fn().mockResolvedValue({}),
 }));
 
 describe('processDiscoveryJob', () => {

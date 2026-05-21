@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { draftEmail } from '@/lib/drafting';
+import prisma from '@/lib/prisma';
+import { canPerformAction, incrementUsage } from '@/lib/limits';
 
 export async function POST(
   request: Request,
@@ -22,7 +24,35 @@ export async function POST(
       // Gracefully handle request without body (default tone is friendly)
     }
 
+    // 1. Fetch lead to get the workspaceId
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      select: { workspaceId: true },
+    });
+
+    if (!lead) {
+      return NextResponse.json({ error: 'Lead not found' }, { status: 404 });
+    }
+
+    const workspaceId = lead.workspaceId;
+
+    // 2. SaaS resource limit check: Daily Drafts limit
+    const quota = await canPerformAction(workspaceId, 'drafts');
+    if (!quota.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Daily email drafts quota limit reached (${quota.limit}/${quota.limit}). Please upgrade your subscription tier in Settings to increase daily caps.`,
+          limitReached: true,
+          metric: 'drafts'
+        },
+        { status: 403 }
+      );
+    }
+
     const result = await draftEmail(id, tone);
+
+    // 3. Increment drafts usage counter
+    await incrementUsage(workspaceId, 'drafts');
 
     return NextResponse.json({
       success: true,

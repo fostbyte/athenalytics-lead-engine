@@ -55,6 +55,7 @@ export async function checkAndLogQuota(apiName: 'places' | 'geocoding'): Promise
   try {
     const aggregate = await prisma.apiUsageLog.aggregate({
       where: {
+        apiName: { in: ['places', 'geocoding'] },
         timestamp: {
           gte: startOfMonth,
         },

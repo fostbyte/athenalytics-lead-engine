@@ -1,6 +1,7 @@
 import prisma from './prisma';
 import { discoverLeads } from './discovery';
 import { normalizeGeography, calculateDistanceMiles } from './geo';
+import { canPerformAction, incrementUsage } from './limits';
 
 export async function processDiscoveryJob(jobId: string) {
   // 1. Fetch job
@@ -79,8 +80,21 @@ export async function processDiscoveryJob(jobId: string) {
       });
     }
 
-    if (leadCreates.length > 0) {
-      await prisma.lead.createMany({ data: leadCreates });
+    // SaaS resource limit check: Results / Leads discovered limits
+    const quota = await canPerformAction(job.workspaceId, 'results', 0);
+    
+    let finalLeadCreates = leadCreates;
+    let limitWarning = '';
+    
+    if (leadCreates.length > quota.remaining) {
+      finalLeadCreates = leadCreates.slice(0, quota.remaining);
+      limitWarning = `Daily lead results quota limit reached. Truncated from ${leadCreates.length} to ${quota.remaining} leads. Upgrade your settings plan to increase daily caps.`;
+    }
+
+    if (finalLeadCreates.length > 0) {
+      await prisma.lead.createMany({ data: finalLeadCreates });
+      // Increment results usage counter
+      await incrementUsage(job.workspaceId, 'results', finalLeadCreates.length);
     }
 
     // 5. Mark Complete
@@ -88,11 +102,12 @@ export async function processDiscoveryJob(jobId: string) {
       where: { id: job.id },
       data: {
         status: 'completed',
-        totalFound: leadCreates.length,
+        totalFound: finalLeadCreates.length,
+        error: limitWarning || undefined,
       }
     });
 
-    return { success: true, count: leadCreates.length };
+    return { success: true, count: finalLeadCreates.length, truncated: leadCreates.length > quota.remaining };
   } catch (error: any) {
     // Mark failed
     await prisma.searchJob.update({

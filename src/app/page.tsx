@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { logoutAction } from '@/app/actions/auth';
 import LeadsMap from '@/components/LeadsMap';
+import { useToast } from '@/components/Toast';
 import { 
   Search, 
   MapPin, 
@@ -36,11 +37,64 @@ import {
   Code,
   ShieldAlert,
   ShieldCheck,
+  RefreshCw,
   User,
-  RefreshCw
+  Zap,
+  CreditCard,
+  KeyRound,
+  Bell,
+  Calendar,
+  CalendarPlus,
 } from 'lucide-react';
 
+const TIER_LIMITS_UI: Record<string, { name: string; price: string; searches: number; results: number; drafts: number; features: string[] }> = {
+  FREE: {
+    name: 'Free Tier',
+    price: '$0',
+    searches: 10,
+    results: 50,
+    drafts: 50,
+    features: ['10 Searches / day', '50 Discovered Leads / day', '50 Email Drafts / day', 'Standard heuristic AI models'],
+  },
+  TIER_1: {
+    name: 'Premium Growth',
+    price: '$49',
+    searches: 50,
+    results: 250,
+    drafts: 250,
+    features: ['50 Searches / day', '250 Discovered Leads / day', '250 Email Drafts / day', 'Priority API queues', 'Deep search parameters'],
+  },
+  TIER_2: {
+    name: 'Elite Scaler',
+    price: '$149',
+    searches: 200,
+    results: 1000,
+    drafts: 1000,
+    features: ['200 Searches / day', '1,000 Discovered Leads / day', '1,000 Email Drafts / day', 'Dedicated concurrent scrapers', 'Priority support SLAs'],
+  },
+  UNLIMITED: {
+    name: 'Unlimited Enterprise',
+    price: '$299',
+    searches: Infinity,
+    results: Infinity,
+    drafts: Infinity,
+    features: ['∞ Searches / day', '∞ Discovered Leads / day', '∞ Email Drafts / day', 'Bring your own API keys', 'Zero platform API surcharges'],
+  },
+};
+
+const mapRejectionReason = (reason: string | null) => {
+  if (!reason) return 'Unspecified';
+  const mappers: Record<string, string> = {
+    poor_fit: '🚫 Poor Business Category Match',
+    out_of_radius: '📍 Target Out of Operating Radius',
+    missing_contact: '📞 No Valid Outreach Channels',
+    low_rating: '⭐ Reputation / Review Quality Too Low',
+  };
+  return mappers[reason] || reason;
+};
+
 export default function Home() {
+  const toast = useToast();
   // Search Job form states
   const [vertical, setVertical] = useState('');
   const [locationType, setLocationType] = useState<'city_state' | 'zip'>('city_state');
@@ -73,14 +127,34 @@ export default function Home() {
   const [rescoringLeads, setRescoringLeads] = useState<Record<string, boolean>>({});
 
   // Phase 5 States for Tabbed Email Outreach Hub
-  const [activeTab, setActiveTab] = useState<'map' | 'leads' | 'drafts' | 'outbox' | 'settings'>('leads');
+  const [activeTab, setActiveTab] = useState<'map' | 'leads' | 'drafts' | 'outbox' | 'schedules' | 'settings'>('leads');
   const [drafts, setDrafts] = useState<any[]>([]);
+
+  // Notification Feed states
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+
+  // Schedules Dashboard states
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [scheduleVertical, setScheduleVertical] = useState('');
+  const [scheduleLocationType, setScheduleLocationType] = useState<'city_state' | 'zip'>('city_state');
+  const [scheduleCity, setScheduleCity] = useState('');
+  const [scheduleState, setScheduleState] = useState('');
+  const [scheduleZipCode, setScheduleZipCode] = useState('');
+  const [scheduleRadius, setScheduleRadius] = useState('10');
+  const [scheduleTargetCount, setScheduleTargetCount] = useState('50');
+  const [scheduleInterval, setScheduleInterval] = useState<'daily' | 'weekly' | 'monthly'>('weekly');
+  const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [draftsLoading, setDraftsLoading] = useState(false);
   const [selectedDraft, setSelectedDraft] = useState<any | null>(null);
   
   // Edit states for selected draft
   const [editSubject, setEditSubject] = useState('');
   const [editBody, setEditBody] = useState('');
+  const [editRecipientEmail, setEditRecipientEmail] = useState('');
   
   // Action loading states
   const [isSavingDraft, setIsSavingDraft] = useState(false);
@@ -126,7 +200,23 @@ export default function Home() {
       direct: '',
       friendly: '',
       professional: ''
-    }
+    },
+    smtpHost: '',
+    smtpPort: 587,
+    smtpUser: '',
+    smtpPass: '',
+    smtpEnabled: false,
+    hasSmtpPassword: false,
+    
+    // SaaS Quotas & Credentials
+    subscriptionTier: 'FREE',
+    dailySearchesCount: 0,
+    dailyResultsCount: 0,
+    dailyDraftsCount: 0,
+    byoOpenRouterKey: '',
+    byoGoogleMapsKey: '',
+    hasByoOpenRouterKey: false,
+    hasByoGoogleMapsKey: false,
   });
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -169,6 +259,8 @@ export default function Home() {
     fetchDrafts();
     fetchSettings();
     fetchAuditLogs();
+    fetchNotifications();
+    fetchSchedules();
 
     // Support query parameter tabs redirection on mount
     if (typeof window !== 'undefined') {
@@ -255,7 +347,23 @@ export default function Home() {
             direct: '',
             friendly: '',
             professional: ''
-          }
+          },
+          smtpHost: data.smtpHost || '',
+          smtpPort: data.smtpPort || 587,
+          smtpUser: data.smtpUser || '',
+          smtpPass: '',
+          smtpEnabled: data.smtpEnabled || false,
+          hasSmtpPassword: data.hasSmtpPassword || false,
+          
+          // SaaS parameters
+          subscriptionTier: data.subscriptionTier || 'FREE',
+          dailySearchesCount: data.dailySearchesCount || 0,
+          dailyResultsCount: data.dailyResultsCount || 0,
+          dailyDraftsCount: data.dailyDraftsCount || 0,
+          byoOpenRouterKey: '',
+          byoGoogleMapsKey: '',
+          hasByoOpenRouterKey: data.hasByoOpenRouterKey || false,
+          hasByoGoogleMapsKey: data.hasByoGoogleMapsKey || false,
         });
       }
     } catch (err) {
@@ -265,10 +373,226 @@ export default function Home() {
     }
   };
 
+  const fetchNotifications = async () => {
+    setNotificationsLoading(true);
+    try {
+      const res = await fetch(`/api/notifications?workspaceId=${workspaceId}`, {
+        headers: { 'x-workspace-id': workspaceId }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setNotifications(data.notifications || []);
+          const unread = (data.notifications || []).filter((n: any) => !n.isRead).length;
+          setUnreadCount(unread);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch notifications:', err);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  };
+
+  const handleMarkAsRead = async (id?: string) => {
+    try {
+      const res = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-workspace-id': workspaceId
+        },
+        body: JSON.stringify(id ? { id } : {})
+      });
+      if (res.ok) {
+        fetchNotifications();
+      }
+    } catch (err) {
+      console.error('Failed to mark notifications as read:', err);
+    }
+  };
+
+  const handleDeleteNotification = async (id?: string) => {
+    try {
+      const url = id 
+        ? `/api/notifications?id=${id}&workspaceId=${workspaceId}`
+        : `/api/notifications?workspaceId=${workspaceId}`;
+      const res = await fetch(url, {
+        method: 'DELETE',
+        headers: { 'x-workspace-id': workspaceId }
+      });
+      if (res.ok) {
+        toast.success(id ? 'Notification deleted' : 'All notifications cleared');
+        fetchNotifications();
+      }
+    } catch (err) {
+      console.error('Failed to delete notification:', err);
+    }
+  };
+
+  const fetchSchedules = async () => {
+    setSchedulesLoading(true);
+    try {
+      const res = await fetch(`/api/schedules?workspaceId=${workspaceId}`, {
+        headers: { 'x-workspace-id': workspaceId }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setSchedules(data.schedules || []);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch schedules:', err);
+    } finally {
+      setSchedulesLoading(false);
+    }
+  };
+
+  const handleToggleScheduleActive = async (id: string, currentStatus: boolean) => {
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-workspace-id': workspaceId
+        },
+        body: JSON.stringify({ isActive: !currentStatus })
+      });
+      if (res.ok) {
+        toast.success(!currentStatus ? 'Schedule activated' : 'Schedule paused');
+        fetchSchedules();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to toggle schedule status');
+      }
+    } catch (err) {
+      console.error('Failed to toggle schedule active state:', err);
+    }
+  };
+
+  const handleDeleteSchedule = async (id: string) => {
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'DELETE',
+        headers: { 'x-workspace-id': workspaceId }
+      });
+      if (res.ok) {
+        toast.success('Schedule deleted successfully');
+        fetchSchedules();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to delete schedule');
+      }
+    } catch (err) {
+      console.error('Failed to delete schedule:', err);
+    }
+  };
+
+  const handleCreateSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scheduleVertical.trim()) {
+      toast.warning('Please specify a business vertical/niche', 3000, 'Missing Fields');
+      return;
+    }
+    if (scheduleLocationType === 'city_state' && (!scheduleCity.trim() || !scheduleState.trim())) {
+      toast.warning('Please specify both city and state', 3000, 'Missing Fields');
+      return;
+    }
+    if (scheduleLocationType === 'zip' && !scheduleZipCode.trim()) {
+      toast.warning('Please specify a ZIP code', 3000, 'Missing Fields');
+      return;
+    }
+
+    setIsCreatingSchedule(true);
+    try {
+      const res = await fetch('/api/schedules', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-workspace-id': workspaceId
+        },
+        body: JSON.stringify({
+          vertical: scheduleVertical,
+          locationType: scheduleLocationType,
+          city: scheduleLocationType === 'city_state' ? scheduleCity : null,
+          state: scheduleLocationType === 'city_state' ? scheduleState : null,
+          zipCode: scheduleLocationType === 'zip' ? scheduleZipCode : null,
+          radiusMiles: parseInt(scheduleRadius),
+          targetCount: parseInt(scheduleTargetCount),
+          interval: scheduleInterval
+        })
+      });
+
+      if (res.ok) {
+        toast.success('Scheduled search created successfully! The first run has been initiated.', 5000, 'Schedule Created');
+        setScheduleVertical('');
+        setScheduleCity('');
+        setScheduleState('');
+        setScheduleZipCode('');
+        setScheduleRadius('10');
+        setScheduleTargetCount('50');
+        setScheduleInterval('weekly');
+        fetchSchedules();
+        fetchRecentSearches();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to create schedule');
+      }
+    } catch (err: any) {
+      console.error('Failed to create scheduled search:', err);
+      toast.error(`Error: ${err.message}`);
+    } finally {
+      setIsCreatingSchedule(false);
+    }
+  };
+
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [isTestingSmtp, setIsTestingSmtp] = useState(false);
+
+  const handleTestSmtpConnection = async () => {
+    if (!settings.smtpHost || !settings.smtpPort || !settings.smtpUser) {
+      toast.warning('SMTP Host, Port, and User are required to test connection.', 4000, 'Missing Fields');
+      return;
+    }
+    if (!testEmailRecipient.trim()) {
+      toast.warning('Please enter a valid recipient email address to send the test message to.', 4000, 'Recipient Required');
+      return;
+    }
+    setIsTestingSmtp(true);
+    try {
+      const res = await fetch('/api/settings/test-smtp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-workspace-id': workspaceId
+        },
+        body: JSON.stringify({
+          smtpHost: settings.smtpHost,
+          smtpPort: Number(settings.smtpPort),
+          smtpUser: settings.smtpUser,
+          smtpPass: settings.smtpPass || undefined,
+          testEmailRecipient
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || 'SMTP Connection Verified Successfully!');
+      } else {
+        toast.error(data.error || 'SMTP Connection Test Failed. Please verify credentials.', 5000, 'Handshake Failed');
+      }
+    } catch (err: any) {
+      console.error('Failed to test SMTP connection:', err);
+      toast.error(err.message || 'SMTP test handshake encountered a network error.', 5000, 'Network Error');
+    } finally {
+      setIsTestingSmtp(false);
+    }
+  };
+
   const handleSaveSettings = async () => {
     const sum = getWeightsSum(settings.scoringWeights);
     if (Math.abs(sum - 100) > 0.01) {
-      alert(`Scoring weights must sum to exactly 100%. Current total: ${sum}%`);
+      toast.warning(`Scoring weights must sum to exactly 100%. Current total: ${sum}%`, 5000, 'Invalid Weights');
       return;
     }
 
@@ -284,7 +608,7 @@ export default function Home() {
         body: JSON.stringify(settings)
       });
       if (res.ok) {
-        alert('Workspace settings updated and logged successfully!');
+        toast.success('Workspace settings updated and logged successfully!');
         await fetchSettings();
         await fetchAuditLogs();
       } else {
@@ -326,16 +650,16 @@ export default function Home() {
         }
       });
       if (res.ok) {
-        alert('Enrichment retry successful! Lead signals updated and rescored.');
+        toast.success('Enrichment retry successful! Lead signals updated and rescored.');
         await fetchLeads(leadSearch);
         await fetchAuditLogs();
       } else {
         const data = await res.json();
-        alert(`Enrichment failed: ${data.error || 'Unknown error'}`);
+        toast.error(`Enrichment failed: ${data.error || 'Unknown error'}`);
       }
     } catch (err: any) {
       console.error('Failed to retry enrichment:', err);
-      alert(`Error retrying enrichment: ${err.message}`);
+      toast.error(`Error retrying enrichment: ${err.message}`);
     } finally {
       setEnrichRetryingLeads(prev => ({ ...prev, [leadId]: false }));
     }
@@ -352,21 +676,21 @@ export default function Home() {
           'Content-Type': 'application/json',
           'x-workspace-id': workspaceId
         },
-        body: JSON.stringify({ reason: actualReason })
+        body: JSON.stringify({ rejectionReason: actualReason })
       });
       if (res.ok) {
-        alert('Lead successfully rejected and archived.');
+        toast.success('Lead successfully rejected and archived.');
         setRejectingLeadId(null);
         setCustomRejectionReason('');
         await fetchLeads(leadSearch);
         await fetchAuditLogs();
       } else {
         const data = await res.json();
-        alert(`Failed to reject lead: ${data.error || 'Unknown error'}`);
+        toast.error(`Failed to reject lead: ${data.error || 'Unknown error'}`);
       }
     } catch (err: any) {
       console.error('Failed to reject lead:', err);
-      alert(`Error rejecting lead: ${err.message}`);
+      toast.error(`Error rejecting lead: ${err.message}`);
     } finally {
       setIsRejectingLead(false);
     }
@@ -562,6 +886,7 @@ export default function Home() {
     setSelectedDraft(draft);
     setEditSubject(draft.subject);
     setEditBody(draft.body);
+    setEditRecipientEmail(draft.lead?.contactEmail || '');
     setSelectedTone('friendly');
   };
 
@@ -575,17 +900,22 @@ export default function Home() {
           'Content-Type': 'application/json',
           'x-workspace-id': workspaceId
         },
-        body: JSON.stringify({ subject: editSubject, body: editBody })
+        body: JSON.stringify({ subject: editSubject, body: editBody, recipientEmail: editRecipientEmail })
       });
       if (res.ok) {
         const data = await res.json();
-        setDrafts(prev => prev.map(d => d.id === selectedDraft.id ? { ...d, subject: editSubject, body: editBody } : d));
+        setDrafts(prev => prev.map(d => d.id === selectedDraft.id ? { 
+          ...d, 
+          subject: editSubject, 
+          body: editBody, 
+          lead: d.lead ? { ...d.lead, contactEmail: editRecipientEmail } : null 
+        } : d));
         setSelectedDraft(data.draft);
-        alert('Draft changes successfully saved to database.');
+        toast.success('Draft changes successfully saved to database.');
       }
     } catch (err) {
       console.error('Failed to save draft edits:', err);
-      alert('Error saving draft. Please try again.');
+      toast.error('Error saving draft. Please try again.');
     } finally {
       setIsSavingDraft(false);
     }
@@ -604,10 +934,11 @@ export default function Home() {
         await fetchDrafts();
         setSelectedDraft(data.draft);
         await fetchLeads(leadSearch);
-        alert('Draft has been officially approved! Lead status is updated.');
+        toast.success('Draft has been officially approved! Lead status is updated.');
       }
     } catch (err) {
       console.error('Failed to approve draft:', err);
+      toast.error('Failed to approve draft. Please try again.');
     } finally {
       setIsApprovingDraft(false);
     }
@@ -623,15 +954,16 @@ export default function Home() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert('Simulated email outreach sent successfully! Saved to Immutable Outbox.');
+        toast.success('Simulated email outreach sent successfully! Saved to Immutable Outbox.');
         await fetchDrafts();
         await fetchLeads(leadSearch);
         setSelectedDraft(null);
       } else {
-        alert(`Gated Send Refused: ${data.error}`);
+        toast.error(`Gated Send Refused: ${data.error}`);
       }
     } catch (err) {
       console.error('Failed to send outreach:', err);
+      toast.error('Failed to send outreach. Please try again.');
     } finally {
       setIsSendingDraft(false);
     }
@@ -647,13 +979,14 @@ export default function Home() {
         headers: { 'x-workspace-id': workspaceId }
       });
       if (res.ok) {
-        alert('Draft successfully deleted.');
+        toast.success('Draft successfully discarded.');
         await fetchDrafts();
         await fetchLeads(leadSearch);
         setSelectedDraft(null);
       }
     } catch (err) {
       console.error('Failed to discard draft:', err);
+      toast.error('Failed to discard draft. Please try again.');
     } finally {
       setIsDiscardingDraft(false);
     }
@@ -680,10 +1013,11 @@ export default function Home() {
         });
         await fetchDrafts();
         handleSelectDraft(data.draft);
-        alert(`Email draft successfully regenerated with ${selectedTone} tone!`);
+        toast.success(`Email draft successfully regenerated with ${selectedTone} tone!`);
       }
     } catch (err) {
       console.error('Failed to regenerate draft:', err);
+      toast.error('Failed to regenerate draft. Please try again.');
     } finally {
       setIsRegeneratingDraft(false);
     }
@@ -718,6 +1052,182 @@ export default function Home() {
     <main className="min-h-screen p-8 md:p-24 bg-gradient-to-b from-[#09090b] to-[#121214] text-zinc-100">
       {/* ── User Navigation Bar ── */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, padding: '10px 24px', background: 'rgba(9,9,11,0.85)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(63,63,70,0.5)' }}>
+        {/* Glowing glassmorphic Notification Bell dropdown */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+            style={{
+              position: 'relative',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '8px',
+              padding: '6px 10px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              transition: 'all 0.2s',
+              color: unreadCount > 0 ? '#e0f2fe' : '#a1a1aa',
+              boxShadow: unreadCount > 0 ? '0 0 12px rgba(56, 189, 248, 0.25)' : 'none',
+            }}
+            className="hover:bg-zinc-800/50 hover:border-zinc-700"
+          >
+            <Bell size={16} className={unreadCount > 0 ? 'text-sky-400 animate-pulse' : ''} />
+            {unreadCount > 0 && (
+              <span style={{
+                position: 'absolute',
+                top: '-4px',
+                right: '-4px',
+                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                color: 'white',
+                fontSize: '9px',
+                fontWeight: 'bold',
+                borderRadius: '9999px',
+                padding: '1px 5px',
+                boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)',
+                minWidth: '16px',
+                textAlign: 'center'
+              }}>
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          {showNotificationsDropdown && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                width: '340px',
+                background: 'rgba(15, 15, 17, 0.96)',
+                backdropFilter: 'blur(20px)',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 16px -6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.03)',
+                padding: '16px',
+                zIndex: 200,
+                maxHeight: '400px',
+                overflowY: 'auto'
+              }}
+              onMouseLeave={() => setShowNotificationsDropdown(false)}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <h3 style={{ fontSize: '13px', fontWeight: 'bold', color: '#f4f4f5', margin: 0 }}>Workspace Alerts</h3>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={() => handleMarkAsRead()}
+                      style={{ fontSize: '10px', color: '#38bdf8', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      Read All
+                    </button>
+                  )}
+                  {notifications.length > 0 && (
+                    <button
+                      onClick={() => handleDeleteNotification()}
+                      style={{ fontSize: '10px', color: '#f87171', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {notificationsLoading && notifications.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: '#71717a', fontSize: '12px' }}>
+                  Loading notifications...
+                </div>
+              ) : notifications.length === 0 ? (
+                <div style={{ padding: '24px 0', textAlign: 'center', color: '#71717a', fontSize: '12px' }}>
+                  No notifications yet.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {notifications.map((notif) => {
+                    let typeColor = '#38bdf8'; // info - blue
+                    let typeBg = 'rgba(56, 189, 248, 0.06)';
+                    let typeBorder = 'rgba(56, 189, 248, 0.15)';
+                    if (notif.type === 'success') {
+                      typeColor = '#34d399'; // green
+                      typeBg = 'rgba(52, 211, 153, 0.06)';
+                      typeBorder = 'rgba(52, 211, 153, 0.15)';
+                    } else if (notif.type === 'new_leads') {
+                      typeColor = '#c084fc'; // purple
+                      typeBg = 'rgba(192, 132, 252, 0.08)';
+                      typeBorder = 'rgba(192, 132, 252, 0.2)';
+                    } else if (notif.type === 'warning' || notif.type === 'failed') {
+                      typeColor = '#f87171'; // red
+                      typeBg = 'rgba(248, 113, 113, 0.06)';
+                      typeBorder = 'rgba(248, 113, 113, 0.15)';
+                    }
+
+                    return (
+                      <div
+                        key={notif.id}
+                        style={{
+                          background: typeBg,
+                          border: `1px solid ${typeBorder}`,
+                          borderRadius: '8px',
+                          padding: '10px 12px',
+                          position: 'relative',
+                          opacity: notif.isRead ? 0.6 : 1,
+                          transition: 'opacity 0.2s',
+                          textAlign: 'left'
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                          <span style={{ fontSize: '11px', fontWeight: 'bold', color: typeColor }}>
+                            {notif.title}
+                          </span>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            {!notif.isRead && (
+                              <button
+                                onClick={() => handleMarkAsRead(notif.id)}
+                                style={{
+                                  fontSize: '11px',
+                                  color: '#34d399',
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  padding: 0
+                                }}
+                                title="Mark as read"
+                              >
+                                ✓
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteNotification(notif.id)}
+                              style={{
+                                fontSize: '11px',
+                                color: '#f87171',
+                                background: 'none',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: 0
+                              }}
+                              title="Delete notification"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                        <p style={{ fontSize: '11px', color: '#d4d4d8', margin: '4px 0 0 0', lineHeight: 1.4 }}>
+                          {notif.message}
+                        </p>
+                        <span style={{ fontSize: '9px', color: '#71717a', display: 'block', marginTop: '6px' }}>
+                          {new Date(notif.createdAt).toLocaleDateString()} {new Date(notif.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <Link href="/admin" style={{ fontSize: 12, color: '#818cf8', textDecoration: 'none', background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.25)', borderRadius: 6, padding: '5px 12px', fontWeight: 600 }}>🛡️ Admin</Link>
         <form action={logoutAction} style={{ display: 'inline' }}>
           <button type="submit" style={{ fontSize: 12, color: '#94a3b8', background: 'rgba(71,85,105,0.2)', border: '1px solid rgba(71,85,105,0.3)', borderRadius: 6, padding: '5px 12px', cursor: 'pointer', fontWeight: 600 }}>Sign Out</button>
@@ -984,6 +1494,16 @@ export default function Home() {
                   }`}
                 >
                   Outbox
+                </button>
+                <button
+                  onClick={() => setActiveTab('schedules')}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold tracking-wider uppercase transition-all duration-200 ${
+                    activeTab === 'schedules'
+                      ? 'bg-gradient-to-r from-pink-600 to-rose-600 text-white shadow-md'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  📅 Schedules
                 </button>
                 <button
                   onClick={() => setActiveTab('settings')}
@@ -1257,7 +1777,12 @@ export default function Home() {
                                   <AlertTriangle className="w-3.5 h-3.5" />
                                   Lead Rejected / Archived
                                 </div>
-                                <p>Reason: <span className="font-semibold text-red-300 font-mono text-[10px]">{lead.rejectionReason || 'poor_fit'}</span></p>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-zinc-400 font-medium">Reason:</span>
+                                  <span className="px-2.5 py-1 bg-red-950/60 border border-red-850/50 text-red-300 rounded-lg text-[10px] font-semibold tracking-wide">
+                                    {mapRejectionReason(lead.rejectionReason)}
+                                  </span>
+                                </div>
                               </div>
                             )}
 
@@ -1526,6 +2051,20 @@ export default function Home() {
                       {/* Email draft inputs */}
                       <div className="space-y-4">
                         <div>
+                          <label className="block text-xs uppercase tracking-wider font-bold text-zinc-500 mb-1.5 flex items-center gap-1.5">
+                            <Mail className="w-3.5 h-3.5 text-indigo-400" />
+                            Recipient Email
+                          </label>
+                          <input
+                            type="email"
+                            value={editRecipientEmail}
+                            onChange={(e) => setEditRecipientEmail(e.target.value)}
+                            placeholder="recipient@example.com"
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 px-4 focus:ring-1 focus:ring-indigo-500 focus:border-transparent outline-none transition text-zinc-200 text-sm font-medium"
+                          />
+                        </div>
+
+                        <div>
                           <label className="block text-xs uppercase tracking-wider font-bold text-zinc-500 mb-1.5">
                             Email Subject
                           </label>
@@ -1734,6 +2273,98 @@ export default function Home() {
               <div className="grid md:grid-cols-5 gap-6 items-start animate-fadeIn">
                 {/* Left Columns (3/5) - Configuration Options */}
                 <div className="md:col-span-3 space-y-6">
+                  {/* Dynamic SaaS Quota HUD */}
+                  <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-amber-500" /> Daily Resource Quotas ({settings.subscriptionTier || 'FREE'} Plan)
+                      </h3>
+                      <span className="text-[10px] text-zinc-500 font-light">
+                        Resets daily at midnight
+                      </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-2">
+                      {/* Searches Quota */}
+                      {(() => {
+                        const limit = TIER_LIMITS_UI[settings.subscriptionTier]?.searches ?? 10;
+                        const current = settings.dailySearchesCount ?? 0;
+                        const percent = limit === Infinity ? 0 : Math.min(100, (current / limit) * 100);
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-zinc-400 font-medium">Daily Searches</span>
+                              <span className="font-mono text-zinc-300 font-semibold">
+                                {current} / {limit === Infinity ? '∞' : limit}
+                              </span>
+                            </div>
+                            <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-850/50">
+                              <div
+                                className="bg-gradient-to-r from-amber-500 to-orange-500 h-full transition-all duration-500"
+                                style={{ width: `${limit === Infinity ? 100 : percent}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-zinc-500 font-light">
+                              Used to discover new leads list categories.
+                            </p>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Results Quota */}
+                      {(() => {
+                        const limit = TIER_LIMITS_UI[settings.subscriptionTier]?.results ?? 50;
+                        const current = settings.dailyResultsCount ?? 0;
+                        const percent = limit === Infinity ? 0 : Math.min(100, (current / limit) * 100);
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-zinc-400 font-medium">Daily Leads Saved</span>
+                              <span className="font-mono text-zinc-300 font-semibold">
+                                {current} / {limit === Infinity ? '∞' : limit}
+                              </span>
+                            </div>
+                            <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-850/50">
+                              <div
+                                className="bg-gradient-to-r from-amber-500 to-orange-500 h-full transition-all duration-500"
+                                style={{ width: `${limit === Infinity ? 100 : percent}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-zinc-500 font-light">
+                              Quota of total discovered business contacts saved.
+                            </p>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Drafts Quota */}
+                      {(() => {
+                        const limit = TIER_LIMITS_UI[settings.subscriptionTier]?.drafts ?? 50;
+                        const current = settings.dailyDraftsCount ?? 0;
+                        const percent = limit === Infinity ? 0 : Math.min(100, (current / limit) * 100);
+                        return (
+                          <div className="space-y-2">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-zinc-400 font-medium">Daily Email Drafts</span>
+                              <span className="font-mono text-zinc-300 font-semibold">
+                                {current} / {limit === Infinity ? '∞' : limit}
+                              </span>
+                            </div>
+                            <div className="w-full bg-zinc-950 rounded-full h-2 overflow-hidden border border-zinc-850/50">
+                              <div
+                                className="bg-gradient-to-r from-amber-500 to-orange-500 h-full transition-all duration-500"
+                                style={{ width: `${limit === Infinity ? 100 : percent}%` }}
+                              />
+                            </div>
+                            <p className="text-[10px] text-zinc-500 font-light">
+                              Custom AI outreach campaigns drafted by OpenAI.
+                            </p>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </div>
+
                   {/* Sender Profile Card */}
                   <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400 mb-4 flex items-center gap-2">
@@ -1762,6 +2393,187 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Custom SMTP Email Relay Server */}
+                  <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                        <Mail className="w-4 h-4 text-amber-500" /> Custom SMTP Email Relay Server
+                      </h3>
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={settings.smtpEnabled || false}
+                          onChange={(e) => setSettings((prev: any) => ({ ...prev, smtpEnabled: e.target.checked }))}
+                          className="accent-amber-500 rounded border-zinc-800 bg-zinc-950 text-amber-500 focus:ring-0"
+                        />
+                        <span className="text-xs font-semibold text-zinc-450 uppercase">Enable SMTP Relay</span>
+                      </label>
+                    </div>
+
+                    <p className="text-xs text-zinc-500 font-light leading-relaxed">
+                      Connect your own custom SMTP mail server to dispatch outreach emails automatically instead of generating copy-to-clipboard drafts.
+                    </p>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="col-span-2">
+                        <label className="block text-[10px] font-semibold text-zinc-450 mb-1 uppercase">SMTP Host / Server</label>
+                        <input
+                          type="text"
+                          value={settings.smtpHost || ''}
+                          onChange={(e) => setSettings((prev: any) => ({ ...prev, smtpHost: e.target.value }))}
+                          placeholder="e.g. smtp.gmail.com"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-amber-500 transition text-zinc-350 text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-semibold text-zinc-450 mb-1 uppercase">SMTP Port</label>
+                        <input
+                          type="number"
+                          value={settings.smtpPort || 587}
+                          onChange={(e) => setSettings((prev: any) => ({ ...prev, smtpPort: parseInt(e.target.value) || 587 }))}
+                          placeholder="587"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-amber-500 transition text-zinc-350 text-xs"
+                        />
+                      </div>
+                      <div className="col-span-2 md:col-span-2">
+                        <label className="block text-[10px] font-semibold text-zinc-450 mb-1 uppercase">SMTP User / Username</label>
+                        <input
+                          type="text"
+                          value={settings.smtpUser || ''}
+                          onChange={(e) => setSettings((prev: any) => ({ ...prev, smtpUser: e.target.value }))}
+                          placeholder="e.g. sender@example.com"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-amber-500 transition text-zinc-350 text-xs"
+                        />
+                      </div>
+                      <div className="col-span-2 md:col-span-2">
+                        <label className="block text-[10px] font-semibold text-zinc-450 mb-1 uppercase">SMTP Password</label>
+                        <input
+                          type="password"
+                          value={settings.smtpPass || ''}
+                          onChange={(e) => setSettings((prev: any) => ({ ...prev, smtpPass: e.target.value }))}
+                          placeholder={settings.hasSmtpPassword ? '•••••••• (Saved)' : 'Enter SMTP password'}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-amber-500 transition text-zinc-350 text-xs"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-zinc-850/40 flex flex-col md:flex-row md:items-end justify-between gap-3">
+                      <div className="space-y-1 max-w-sm flex-1">
+                        <label className="block text-[10px] font-semibold text-zinc-450 uppercase">Test SMTP Connection Handshake</label>
+                        <input
+                          type="email"
+                          value={testEmailRecipient}
+                          onChange={(e) => setTestEmailRecipient(e.target.value)}
+                          placeholder="test-recipient@example.com"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-amber-500 transition text-zinc-350 text-xs"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleTestSmtpConnection}
+                        disabled={isTestingSmtp}
+                        className="bg-amber-500 hover:bg-amber-600 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 text-black font-bold text-xs py-2 px-4 rounded-lg flex items-center justify-center gap-1.5 self-start md:self-auto"
+                      >
+                        {isTestingSmtp ? (
+                          <>
+                            <RotateCw className="w-3.5 h-3.5 animate-spin" /> Verifying Server...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-3.5 h-3.5" /> Test Handshake Relay
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SaaS Limit selector and Billing plan selector */}
+                  <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left space-y-4">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-amber-500" /> Plan Subscription Tiers
+                    </h3>
+                    <p className="text-xs text-zinc-500 font-light leading-relaxed">
+                      Select a subscription tier to upgrade your daily usage quotas. Switches are logged securely inside our audit trails.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      {Object.entries(TIER_LIMITS_UI).map(([tierKey, tierInfo]) => {
+                        const isCurrent = settings.subscriptionTier === tierKey;
+                        return (
+                          <button
+                            key={tierKey}
+                            type="button"
+                            onClick={() => setSettings((prev: any) => ({ ...prev, subscriptionTier: tierKey }))}
+                            className={`border text-left rounded-xl p-4 transition-all duration-205 relative overflow-hidden flex flex-col justify-between h-48 ${
+                              isCurrent
+                                ? 'bg-amber-550/5 border-amber-500/60 shadow-lg shadow-amber-550/5'
+                                : 'bg-zinc-950/40 border-zinc-850 hover:border-zinc-800'
+                            }`}
+                          >
+                            {isCurrent && (
+                              <div className="absolute top-0 right-0 bg-amber-500 text-black text-[8px] font-extrabold uppercase px-2 py-0.5 rounded-bl">
+                                Current Plan
+                              </div>
+                            )}
+                            <div>
+                              <h4 className="font-extrabold text-sm text-zinc-200">{tierInfo.name}</h4>
+                              <div className="mt-1 flex items-baseline gap-1">
+                                <span className="text-xl font-black text-amber-400">{tierInfo.price}</span>
+                                <span className="text-[10px] text-zinc-500">/ month</span>
+                              </div>
+                              <ul className="mt-3 space-y-1">
+                                {tierInfo.features.slice(0, 3).map((f, fIdx) => (
+                                  <li key={fIdx} className="text-[9px] text-zinc-400 flex items-center gap-1 leading-snug">
+                                    <span className="text-amber-500 select-none">•</span> <span>{f}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className={`text-center py-1 rounded-md text-[9px] font-bold uppercase transition w-full mt-2 ${
+                              isCurrent ? 'bg-amber-500/20 text-amber-400' : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800'
+                            }`}>
+                              {isCurrent ? 'Active Plan' : 'Select Plan'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Bring Your Own Credentials (BYO Keys) */}
+                  {settings.subscriptionTier === 'UNLIMITED' && (
+                    <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left space-y-4 animate-fadeIn">
+                      <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
+                        <KeyRound className="w-4 h-4 text-amber-500" /> Bring Your Own Credentials (BYO Keys)
+                      </h3>
+                      <p className="text-xs text-zinc-500 font-light leading-relaxed">
+                        As an Unlimited tier subscriber, please provide your own API credentials. Keys are securely encrypted server-side using AES-256-GCM. Plaintext values will never be exposed.
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-zinc-455 mb-1.5 uppercase">BYO OpenRouter API Key</label>
+                          <input
+                            type="password"
+                            value={settings.byoOpenRouterKey || ''}
+                            onChange={(e) => setSettings((prev: any) => ({ ...prev, byoOpenRouterKey: e.target.value }))}
+                            placeholder={settings.hasByoOpenRouterKey ? '•••••••• (Saved)' : 'Enter OpenRouter Key'}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-amber-500 transition text-zinc-350 text-xs font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-zinc-455 mb-1.5 uppercase">BYO Google Maps / Places API Key</label>
+                          <input
+                            type="password"
+                            value={settings.byoGoogleMapsKey || ''}
+                            onChange={(e) => setSettings((prev: any) => ({ ...prev, byoGoogleMapsKey: e.target.value }))}
+                            placeholder={settings.hasByoGoogleMapsKey ? '•••••••• (Saved)' : 'Enter Google Maps Key'}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-amber-500 transition text-zinc-355 text-xs font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
 
                   {/* Dynamic Scoring Weights Config */}
                   <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left">
@@ -2097,6 +2909,255 @@ export default function Home() {
                         })}
                       </div>
                     )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB 5: AUTOMATED SCHEDULES */}
+            {activeTab === 'schedules' && (
+              <div className="grid md:grid-cols-5 gap-6 items-start animate-fadeIn">
+                {/* Left Columns (3/5) - Active Automated Campaigns */}
+                <div className="md:col-span-3 space-y-6">
+                  <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="text-lg font-bold text-zinc-200 flex items-center gap-2">
+                        <Clock className="w-5 h-5 text-pink-400" /> Active Scans & Campaigns
+                      </h3>
+                      <span className="text-[10px] text-zinc-500 font-mono tracking-wider bg-zinc-950 px-2.5 py-1 rounded-md border border-zinc-850">
+                        {schedules.length} Campaigns Configured
+                      </span>
+                    </div>
+
+                    {schedulesLoading ? (
+                      <div className="space-y-4 py-8">
+                        {[1, 2].map(idx => (
+                          <div key={idx} className="h-28 bg-zinc-900/20 rounded-xl animate-pulse border border-zinc-850/50"></div>
+                        ))}
+                      </div>
+                    ) : schedules.length === 0 ? (
+                      <div className="py-16 text-center space-y-3 bg-zinc-950/20 border border-dashed border-zinc-800 rounded-xl">
+                        <CalendarPlus className="w-10 h-10 text-zinc-650 mx-auto" />
+                        <div className="text-sm font-semibold text-zinc-400">No Automation Campaigns Active</div>
+                        <p className="text-xs text-zinc-500 max-w-xs mx-auto font-light leading-relaxed">
+                          Define a business category, operating radius, and frequency on the right to start continuous lead discovery in the background.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {schedules.map((sched) => {
+                          const isZip = sched.locationType === 'zip';
+                          return (
+                            <div
+                              key={sched.id}
+                              style={{
+                                background: sched.isActive ? 'rgba(244, 63, 94, 0.02)' : 'rgba(9, 9, 11, 0.4)',
+                                border: sched.isActive ? '1px solid rgba(244, 63, 94, 0.15)' : '1px solid rgba(63, 63, 70, 0.2)',
+                                boxShadow: sched.isActive ? '0 0 15px rgba(244, 63, 94, 0.03)' : 'none',
+                              }}
+                              className="rounded-2xl p-5 relative overflow-hidden transition-all duration-300 hover:border-zinc-700 text-left flex flex-col justify-between gap-4"
+                            >
+                              <div className="flex justify-between items-start gap-4">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-extrabold text-sm text-zinc-200 tracking-tight">
+                                      🔍 {sched.vertical}
+                                    </span>
+                                    <span className="bg-pink-950/30 text-pink-400 text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-pink-900/30">
+                                      {sched.interval}
+                                    </span>
+                                    <span className={`h-1.5 w-1.5 rounded-full ${sched.isActive ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-600'}`} />
+                                  </div>
+                                  <p className="text-xs text-zinc-400 font-light flex items-center gap-1.5">
+                                    <MapPin className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                                    {isZip ? `ZIP: ${sched.zipCode}` : `${sched.city}, ${sched.state}`}
+                                    <span className="text-zinc-600">•</span>
+                                    Radius: <span className="font-bold text-zinc-300">{sched.radiusMiles} miles</span>
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-2.5">
+                                  {/* Toggle active state */}
+                                  <button
+                                    onClick={() => handleToggleScheduleActive(sched.id, sched.isActive)}
+                                    style={{
+                                      background: sched.isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(71, 85, 105, 0.15)',
+                                      border: sched.isActive ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(71, 85, 105, 0.3)',
+                                      color: sched.isActive ? '#34d399' : '#94a3b8'
+                                    }}
+                                    className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
+                                    title={sched.isActive ? "Pause automated scans" : "Resume automated scans"}
+                                  >
+                                    {sched.isActive ? 'Pause' : 'Resume'}
+                                  </button>
+
+                                  <button
+                                    onClick={() => handleDeleteSchedule(sched.id)}
+                                    className="p-1.5 bg-red-950/20 border border-red-900/30 text-red-400 rounded-lg hover:bg-red-950/40 hover:border-red-800 transition"
+                                    title="Delete Campaign"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-4 border-t border-zinc-850/50 pt-3 mt-1 text-[11px] text-zinc-500 font-light">
+                                <div>
+                                  Target Leads: <span className="font-bold text-zinc-300">{sched.targetCount}</span>
+                                </div>
+                                <div className="text-right">
+                                  Next Run: <span className="font-mono text-zinc-400 font-semibold">{sched.nextRunAt ? new Date(sched.nextRunAt).toLocaleDateString() : 'Pending'}</span>
+                                </div>
+                              </div>
+
+                              {sched.lastRunAt && (
+                                <p className="text-[10px] text-zinc-650 italic mt-0 text-right">
+                                  Last Executed: {new Date(sched.lastRunAt).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Columns (2/5) - Create Campaign Schedule preset */}
+                <div className="md:col-span-2 space-y-6">
+                  <div className="bg-zinc-900/30 border border-zinc-850 rounded-2xl p-6 backdrop-blur-sm text-left">
+                    <h3 className="text-base font-bold text-zinc-200 flex items-center gap-2 mb-6">
+                      <CalendarPlus className="w-5 h-5 text-pink-400" /> Create Scheduled Scan
+                    </h3>
+
+                    <form onSubmit={handleCreateSchedule} className="space-y-5">
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase">Business Vertical / Niche</label>
+                        <div className="relative">
+                          <Briefcase className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
+                          <input
+                            required
+                            type="text"
+                            placeholder="e.g. Dentists"
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 pl-9 pr-4 focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition text-zinc-200 placeholder-zinc-700 text-xs"
+                            value={scheduleVertical}
+                            onChange={(e) => setScheduleVertical(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <label className="block text-xs font-semibold text-zinc-400 uppercase">Geographic Range</label>
+                        <div className="flex gap-2 p-1 bg-zinc-950 rounded-lg w-fit border border-zinc-850">
+                          <button
+                            type="button"
+                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition ${scheduleLocationType === 'city_state' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            onClick={() => setScheduleLocationType('city_state')}
+                          >
+                            City/State
+                          </button>
+                          <button
+                            type="button"
+                            className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase transition ${scheduleLocationType === 'zip' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                            onClick={() => setScheduleLocationType('zip')}
+                          >
+                            ZIP Code
+                          </button>
+                        </div>
+
+                        {scheduleLocationType === 'city_state' ? (
+                          <div className="grid grid-cols-2 gap-3 animate-fadeIn">
+                            <div>
+                              <input
+                                required={scheduleLocationType === 'city_state'}
+                                type="text"
+                                placeholder="City (e.g. Miami)"
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-pink-500 transition text-zinc-200 placeholder-zinc-700 text-xs"
+                                value={scheduleCity}
+                                onChange={(e) => setScheduleCity(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <input
+                                required={scheduleLocationType === 'city_state'}
+                                type="text"
+                                placeholder="State (e.g. FL)"
+                                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-pink-500 transition text-zinc-200 placeholder-zinc-700 text-xs"
+                                value={scheduleState}
+                                onChange={(e) => setScheduleState(e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="animate-fadeIn">
+                            <input
+                              required={scheduleLocationType === 'zip'}
+                              type="text"
+                              placeholder="ZIP Code (e.g. 33101)"
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-pink-500 transition text-zinc-200 placeholder-zinc-700 text-xs"
+                              value={scheduleZipCode}
+                              onChange={(e) => setScheduleZipCode(e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase">Radius (Miles)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-pink-500 transition text-zinc-300 text-xs"
+                            value={scheduleRadius}
+                            onChange={(e) => setScheduleRadius(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-zinc-400 mb-1.5 uppercase">Target Leads</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="200"
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2 px-3 focus:outline-none focus:border-pink-500 transition text-zinc-300 text-xs"
+                            value={scheduleTargetCount}
+                            onChange={(e) => setScheduleTargetCount(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-zinc-400 mb-2 uppercase">Recurrence Interval</label>
+                        <select
+                          value={scheduleInterval}
+                          onChange={(e) => setScheduleInterval(e.target.value as any)}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 px-3 focus:outline-none focus:border-pink-500 transition text-zinc-350 text-xs"
+                        >
+                          <option value="daily">🔄 Daily Scan</option>
+                          <option value="weekly">📅 Weekly Scan</option>
+                          <option value="monthly">📆 Monthly Scan</option>
+                        </select>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isCreatingSchedule}
+                        className="w-full bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition flex items-center justify-center gap-2 shadow-lg shadow-pink-650/10 disabled:opacity-40"
+                      >
+                        {isCreatingSchedule ? (
+                          <>
+                            <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                            Scheduling Campaign...
+                          </>
+                        ) : (
+                          <>
+                            <CalendarPlus className="w-3.5 h-3.5" />
+                            Schedule Campaign
+                          </>
+                        )}
+                      </button>
+                    </form>
                   </div>
                 </div>
               </div>

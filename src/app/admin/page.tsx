@@ -343,6 +343,153 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Side-by-Side Detailed Cost & Token Monitors */}
+                <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 32 }}>
+                  {/* Google Maps detailed billing */}
+                  {stats.googleMapsStats && (
+                    <div style={{
+                      background: 'rgba(15, 23, 42, 0.7)',
+                      border: '1px solid rgba(71, 85, 105, 0.3)',
+                      borderRadius: 16,
+                      padding: 24,
+                      flex: 1,
+                      minWidth: 320,
+                      backdropFilter: 'blur(20px)'
+                    }}>
+                      <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>📊</span> Google Maps API Rates & Usage
+                      </h4>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Places Text Search API */}
+                        <div style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: 12, padding: 16, border: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#818cf8' }}>Places Text Search (New)</span>
+                            <span style={{ fontSize: 11, color: '#64748b', background: 'rgba(99, 102, 241, 0.1)', padding: '2px 8px', borderRadius: 12 }}>
+                              {stats.googleMapsStats.places.rate}
+                            </span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Monthly Requests</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginTop: 2 }}>{stats.googleMapsStats.places.monthlyRequests}</div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>Cost: ${stats.googleMapsStats.places.monthlyCost.toFixed(2)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Today's Requests</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginTop: 2 }}>{stats.googleMapsStats.places.dailyRequests}</div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>Cost: ${stats.googleMapsStats.places.dailyCost.toFixed(2)}</div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Geocoding API */}
+                        <div style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: 12, padding: 16, border: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#34d399' }}>Geocoding API</span>
+                            <span style={{ fontSize: 11, color: '#64748b', background: 'rgba(52, 211, 153, 0.1)', padding: '2px 8px', borderRadius: 12 }}>
+                              {stats.googleMapsStats.geocoding.rate}
+                            </span>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Monthly Requests</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginTop: 2 }}>{stats.googleMapsStats.geocoding.monthlyRequests}</div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>Cost: ${stats.googleMapsStats.geocoding.monthlyCost.toFixed(2)}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Today's Requests</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginTop: 2 }}>{stats.googleMapsStats.geocoding.dailyRequests}</div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>Cost: ${stats.googleMapsStats.geocoding.dailyCost.toFixed(2)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* OpenRouter detailed LLM token usage */}
+                  {stats.openRouterStats && (
+                    <div style={{
+                      background: 'rgba(15, 23, 42, 0.7)',
+                      border: '1px solid rgba(71, 85, 105, 0.3)',
+                      borderRadius: 16,
+                      padding: 24,
+                      flex: 1,
+                      minWidth: 320,
+                      backdropFilter: 'blur(20px)'
+                    }}>
+                      <h4 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, color: '#f1f5f9', display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>🧠</span> OpenRouter LLM Usage & Token Efficiency
+                      </h4>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {/* Token Consumption Counters */}
+                        <div style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: 12, padding: 16, border: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, alignItems: 'center' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#a78bfa' }}>Token Metrics (gemma-2-9b-it)</span>
+                            <span style={{ fontSize: 11, color: '#c084fc', background: 'rgba(167, 139, 250, 0.1)', padding: '2px 8px', borderRadius: 12, fontWeight: 500 }}>
+                              {stats.openRouterStats.monthlyRequests} Monthly Requests
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Prompt Tokens (Input)</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginTop: 2 }}>
+                                {stats.openRouterStats.monthlyPromptTokens.toLocaleString()}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
+                                Today: {stats.openRouterStats.dailyPromptTokens.toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Completion Tokens (Output)</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginTop: 2 }}>
+                                {stats.openRouterStats.monthlyCompletionTokens.toLocaleString()}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
+                                Today: {stats.openRouterStats.dailyCompletionTokens.toLocaleString()}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Token Efficiency Analytics */}
+                        <div style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: 12, padding: 16, border: '1px solid rgba(71, 85, 105, 0.2)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8, alignItems: 'center' }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: '#fbbf24' }}>Usage Efficiency</span>
+                            <span style={{ fontSize: 11, color: '#fbbf24', fontWeight: 600 }}>Active (Free Tier / BYO)</span>
+                          </div>
+                          
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Total Tokens (Month)</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginTop: 2 }}>
+                                {stats.openRouterStats.monthlyTotalTokens.toLocaleString()}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
+                                Today: {stats.openRouterStats.dailyTotalTokens.toLocaleString()}
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 11, color: '#64748b' }}>Avg. Tokens / Request</div>
+                              <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginTop: 2 }}>
+                                {stats.openRouterStats.monthlyRequests > 0 
+                                  ? Math.round(stats.openRouterStats.monthlyTotalTokens / stats.openRouterStats.monthlyRequests).toLocaleString() 
+                                  : 0}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
+                                Est. Cost Saved: ${(stats.openRouterStats.monthlyTotalTokens * 0.00000007).toFixed(4)}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div style={{ color: '#64748b' }}>Loading…</div>

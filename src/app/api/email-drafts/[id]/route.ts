@@ -23,12 +23,19 @@ export async function PUT(
     verifyWorkspaceAccess(existingDraft.workspaceId, requestWorkspaceId);
 
     const body = await request.json();
-    const { subject, body: emailBody, status } = body;
+    const { subject, body: emailBody, status, recipientEmail } = body;
 
     const updateData: any = {};
     if (subject !== undefined) updateData.subject = subject;
     if (emailBody !== undefined) updateData.body = emailBody;
     if (status !== undefined) updateData.status = status;
+
+    if (recipientEmail !== undefined) {
+      await prisma.lead.update({
+        where: { id: existingDraft.leadId },
+        data: { contactEmail: recipientEmail }
+      });
+    }
 
     const draft = await prisma.emailDraft.update({
       where: { id },
@@ -45,6 +52,7 @@ export async function PUT(
     return NextResponse.json({ error: error.message || 'Failed to update draft' }, { status: 500 });
   }
 }
+
 
 export async function DELETE(
   request: Request,

@@ -51,6 +51,7 @@ model SearchJob {
   totalScored      Int      @default(0)
   error            String?
 
+  scheduledSearchId String?
   leads            Lead[]
   
   createdAt        DateTime @default(now())
@@ -143,6 +144,18 @@ model Settings {
   smtpUser           String?
   smtpPassEncr       String?  // AES-256 encrypted app password (stored encrypted)
   smtpEnabled        Boolean  @default(false)
+  
+  // SaaS Limits & Billing (Sprint 16)
+  subscriptionTier   String   @default("FREE") // 'FREE' | 'TIER_1' | 'TIER_2' | 'UNLIMITED'
+  dailySearchesCount Int      @default(0)
+  dailyResultsCount  Int      @default(0)
+  dailyDraftsCount   Int      @default(0)
+  lastResetDate      DateTime @default(now())
+  
+  // Bring Your Own API Keys (Optional for Unlimited)
+  byoOpenRouterKeyEncr String?  // Encrypted OpenRouter key
+  byoGoogleMapsKeyEncr String?  // Encrypted Google Maps key
+
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 }
@@ -159,9 +172,42 @@ model AuditLog {
 }
 
 model ApiUsageLog {
-  id        String   @id @default(cuid())
-  apiName   String   // 'places' | 'geocoding'
-  cost      Float    // Estimated cost in USD
-  timestamp DateTime @default(now())
+  id               String   @id @default(cuid())
+  apiName          String   // 'places' | 'geocoding' | 'openrouter'
+  cost             Float    // Estimated cost in USD
+  promptTokens     Int?     // For OpenRouter LLM tracking
+  completionTokens Int?     // For OpenRouter LLM tracking
+  timestamp        DateTime @default(now())
+}
+
+model ScheduledSearch {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  vertical       String
+  locationType   String   // 'city_state' or 'zip'
+  city           String?
+  state          String?
+  zipCode        String?
+  radiusMiles    Int      @default(10)
+  targetCount    Int      @default(50)
+  filters        Json?
+  
+  interval       String   // 'daily' | 'weekly' | 'monthly'
+  isActive       Boolean  @default(true)
+  nextRunAt      DateTime
+  lastRunAt      DateTime?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  workspaceId String
+  title       String
+  message     String
+  type        String   @default("info") // 'info' | 'success' | 'warning' | 'new_leads'
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
 }
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { canPerformAction, incrementUsage } from '@/lib/limits';
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,6 +39,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // SaaS resource limit check: Search Jobs limit
+    const quota = await canPerformAction(workspaceId, 'searches');
+    if (!quota.allowed) {
+      return NextResponse.json(
+        { 
+          error: `Daily discovery search limit reached (${quota.limit}/${quota.limit}). Please upgrade your subscription tier in Settings to run more searches.`,
+          limitReached: true,
+          metric: 'searches'
+        },
+        { status: 403 }
+      );
+    }
+
     const searchJob = await prisma.searchJob.create({
       data: {
         workspaceId,
@@ -55,6 +69,9 @@ export async function POST(req: NextRequest) {
         totalScored: 0,
       },
     });
+
+    // Increment searches usage counter for workspace
+    await incrementUsage(workspaceId, 'searches');
 
     return NextResponse.json({ success: true, searchJob }, { status: 201 });
   } catch (error: any) {

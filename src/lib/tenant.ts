@@ -101,6 +101,13 @@ export async function getWorkspaceSettings(workspaceId: string) {
       icpPresets: DEFAULT_ICP_PRESETS as any,
       defaultRadiusMiles: 10,
       promptTemplates: DEFAULT_PROMPT_TEMPLATES as any,
+      
+      // Default SaaS Billing properties
+      subscriptionTier: "FREE",
+      dailySearchesCount: 0,
+      dailyResultsCount: 0,
+      dailyDraftsCount: 0,
+      lastResetDate: new Date(),
     },
   });
 }

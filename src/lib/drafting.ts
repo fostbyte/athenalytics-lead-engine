@@ -237,6 +237,24 @@ Generate the personalized JSON email draft now.`;
       { role: 'user', content: userPrompt }
     ]);
 
+    // Log OpenRouter API Token Usage
+    try {
+      const usage = (response as any).usage_metadata || (response as any).response_metadata?.tokenUsage || (response as any).additional_kwargs?.tokenUsage;
+      const promptTokens = usage?.promptTokens ?? usage?.prompt_tokens ?? 0;
+      const completionTokens = usage?.completionTokens ?? usage?.completion_tokens ?? 0;
+
+      await prisma.apiUsageLog.create({
+        data: {
+          apiName: 'openrouter',
+          cost: 0.0,
+          promptTokens: promptTokens || undefined,
+          completionTokens: completionTokens || undefined,
+        }
+      });
+    } catch (logErr: any) {
+      console.error('[Drafting Engine] Failed to log OpenRouter API usage:', logErr.message);
+    }
+
     const content = response.text || response.content;
     let jsonContent = typeof content === 'string' ? content : JSON.stringify(content);
     
